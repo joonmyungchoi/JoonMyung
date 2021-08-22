@@ -9,7 +9,7 @@ setup(
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     license="Joon",
-    package=[""],
+    package=["JoonMyung's Library"],
     zip_safe=False,
     install_requires=[
 
