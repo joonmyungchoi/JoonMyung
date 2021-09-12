@@ -1,17 +1,20 @@
-from setuptools import setup
+import setuptools
 
-
-setup(
-    name="JoonMyung",
-    version="0.0.2",
-    description="JoonMyung's Library",
-    url="https://github.com/pizard/JoonMyung.git",
+setuptools.setup(
+    name="joonmyung",
+    version="0.0.5",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
-    license="JoonMyung",
-    package=["utils"],
+    description="JoonMyung's Library",
+    url="https://github.com/pizard/JoonMyung.git",
+    license="MIT",
+    py_modules=['utils'],
+    packages=setuptools.find_packages(),
     zip_safe=False,
     install_requires=[
 
     ]
 )
+# python setup.py sdist
+# python -m twine upload dist/*
+# ID:JoonmyungChoi
