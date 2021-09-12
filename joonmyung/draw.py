@@ -4,7 +4,7 @@ import seaborn as sns
 import pandas as pd
 
 
-def draw(matrixes, vmin=None, vmax=None, col=1, p=False, title=[]):
+def draw(matrixes, vmin=None, vmax=None, col=1, p=False, title=[], fmt=1):
     import numpy as np
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -22,7 +22,7 @@ def draw(matrixes, vmin=None, vmax=None, col=1, p=False, title=[]):
         if type(matrix) == torch.Tensor:
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
-        sns.heatmap(pd.DataFrame(matrix), annot=True, fmt=".1f", cmap='Greys'
+        sns.heatmap(pd.DataFrame(matrix), annot=True, fmt=".{}f".format(fmt), cmap='Greys'
                     , yticklabels=False, xticklabels=False, vmin=vmin, vmax=vmax
                     , linewidths=.1, linecolor='black'
                     , ax=ax)
