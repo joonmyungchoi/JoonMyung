@@ -2,13 +2,13 @@ from setuptools import setup
 
 
 setup(
-    name="JoonMyung's Library",
-    version="0.0.1",
-    description="JoonMyung",
+    name="JoonMyung",
+    version="0.0.2",
+    description="JoonMyung's Library",
     url="https://github.com/pizard/JoonMyung.git",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
-    license="Joon",
+    license="JoonMyung",
     package=["utils"],
     zip_safe=False,
     install_requires=[
