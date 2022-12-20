@@ -1,3 +1,7 @@
+from fvcore.nn import FlopCountAnalysis, flop_count_table, flop_count_str
+from thop import profile
+import torch
+
 class AverageMeter:
     ''' Computes and stores the average and current value. '''
     def __init__(self) -> None:
@@ -30,3 +34,23 @@ class AverageMeter:
         print(f'time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'\n\
               f'loss {losses.val:.4f} ({losses.avg:.4f})\t' \n\
               f'acc {avg_score.val:.4f} ({avg_score.avg:.4f})')"
+
+
+
+def thop(model, size):
+    input = torch.randn(size)
+    macs, params = profile(model, inputs=(input,))
+    return macs, params
+
+def numel(model):
+    return sum([m.numel() for m in model.parameters()])
+
+def flops(model, inputs, p=1):
+    flops = FlopCountAnalysis(model, inputs)
+    if p == 1:
+        print(flop_count_table(flops))
+    elif p == 2:
+        print(flop_count_str(flops))
+    return flops.total(), flops.by_operator(), flops.by_module(), flops.by_module_and_operator()
+
+

@@ -15,6 +15,8 @@ class GPU_Worker():
         if self.activate: time.sleep(self.waitTimeInit)
         else: self.activate = True
 
+
+
         availGPUs, count = [], 0
         pynvml.nvmlInit()
         while True:
@@ -68,7 +70,6 @@ def Process_Worker(processes, gpuWorker, p = True):
     end = time.localtime()
     print("------ End Running!! : {} ------".format(time2str(end)))
     print("Training Time :  : {} ------".format(time2str(end - start)))
-
 
 
 # Wokring Sample

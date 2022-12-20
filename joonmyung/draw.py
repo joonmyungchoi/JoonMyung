@@ -118,7 +118,34 @@ def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, mark
     plt.tight_layout()
     plt.show()
 
+def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=False, c_sites={}, showfliers=True):
+    d2s = df[splitColName].unique()
+    d1 = df['d1'].unique()[0]
+    d2s = [d2 for d2 in d2s for c_site in c_sites[d1].keys() if c_site in d2]
 
+    row = (len(d2s) - 1) // col + 1
+
+    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
+    fig.set_size_inches(col * 12, row * 12)
+    for e, d2 in enumerate(tqdm(d2s)):
+        plt.title(d2, fontsize=20)
+        ax = axes[e // col][e % col]
+        temp = df.loc[df['d2'].isin([d2])]
+        if temp["Date_m"].max() != temp["Date_m"].min():
+            ind = pd.date_range(temp["Date_m"].min(), temp["Date_m"].max(), freq="M").strftime("%Y-%m")
+        else:
+            pd.to_datetime(temp["Date_m"].max()).strftime("%Y-%m")
+        g = sns.boxplot(x=x, y=y, data=temp, order=ind, ax=ax, showfliers=showfliers)
+        g.set(title=d2)
+        g.set_xticklabels(ind, rotation=45, fontsize=15)
+        g.set(xlabel=None)
+        for c_site, c_dates in c_sites[d1].items():
+            if c_site in d2:
+                for c_date in c_dates:
+                    c_ind = (pd.to_datetime(c_date, format='%Y%m%d') - pd.to_datetime(temp["Date_m"].min())).days / 30
+                    if c_ind >= 0:
+                        g.axvline(c_ind, ls='--', c="red")
+    plt.show()
 
 
 
