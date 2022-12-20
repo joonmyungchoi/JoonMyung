@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="joonmyung",
-    version="0.1.0",
+    version="1.1.2",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",
@@ -15,6 +15,11 @@ setuptools.setup(
 
     ]
 )
+
+# git add .
+# git commit
+# git push
+
 # python setup.py sdist
-# python -m twine upload dist/*
+# python -m twine upload dist/*     # Remove All File
 # ID:JoonmyungChoi

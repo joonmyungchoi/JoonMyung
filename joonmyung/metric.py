@@ -16,7 +16,7 @@ class AverageMeter:
         self.avg = self.sum / self.count
     def __str__(self):
         return "\
-        end = 0 \n\
+        end = time.time() \n\
         batch_time = AverageMeter() \n\
         batch_time.update(time.time() - end) \n\
         end = time.time() \n\

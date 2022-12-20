@@ -1,7 +1,8 @@
-def read(file_path):
-    import json
-    import os
 
+import json
+import os
+
+def read(file_path):
     filetype = file_path.split(".")[-1]
     if os.path.isfile(file_path):
         with open(file_path, "r") as f:
@@ -12,11 +13,7 @@ def read(file_path):
                 return io.loadmat(file_path)
             elif filetype == "xml":
                 pass
-
+            elif filetype == "pickle":
+                pass
     else:
         return False
-
-
-
-# read("../sample/caption.json")
-read("../sample/data.mat")
