@@ -1,3 +1,11 @@
+import ast, os
+import subprocess
+import time
+import pynvml
+from tqdm import tqdm
+
+from joonmyung.utils import time2str
+
 
 class GPU_Worker():
     def __init__(self, gpus = [], waitTimeInit = 30, waitTime = 60,
@@ -75,3 +83,8 @@ def Process_Worker(processes, gpuWorker, p = True):
 # Wokring Sample
 # gpuWorker = GPU_Worker(args.gpus, 30, 120)
 # Process_Worker(processes, gpuWorker)
+
+
+# QA(Quality Assurance, 품질보증)
+# 1. 중간에 추가 실험, Queue 추가
+# 2.

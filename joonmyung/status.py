@@ -1,6 +1,8 @@
 
 import os
 import torch
+import random
+import numpy as np
 
 
 
@@ -37,4 +39,9 @@ def fixSeed(seed, fast=False, p = True):
             torch.use_deterministic_algorithms(True)
 
     if p: print("torch : {} \tcuda : {} \tnumpy : {}".format(torch.initial_seed(), torch.cuda.initial_seed(), np.random.get_state()[1][0]))
+
+
+def on_terminate(proc):
+    print("process {} terminated".format(proc))
+
 

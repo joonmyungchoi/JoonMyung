@@ -1,8 +1,7 @@
-import os
-import random
+import torch.distributed as dist
+import argparse
+import ast
 
-import torch
-import numpy as np
 
 def to_np(v):
     return v.detach().cpu().numpy()
@@ -28,3 +27,65 @@ def time2str(time, type = 0):
         return "{:4d}.{:2d}.{:2d} {:2d}:{:2d}:{:2d}".format(time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec)
     else:
         raise ValueError()
+
+def is_main_process():
+    return get_rank() == 0
+
+def get_rank():
+    if not is_dist_avail_and_initialized():
+        return 0
+    return dist.get_rank()
+
+
+
+def is_dist_avail_and_initialized():
+    if not dist.is_available():
+        return False
+    if not dist.is_initialized():
+        return False
+    return True
+
+import os
+import zipfile
+
+
+def make_zipfile(src_dir, save_path, enclosing_dir="", exclude_dirs=None, exclude_extensions=None,
+                 exclude_dirs_substring=None):
+    """make a zip file of root_dir, save it to save_path.
+    exclude_paths will be excluded if it is a subdir of root_dir.
+    An enclosing_dir is added is specified.
+    """
+    abs_src = os.path.abspath(src_dir)
+    with zipfile.ZipFile(save_path, "w") as zf:
+        for dirname, subdirs, files in os.walk(src_dir):
+            if exclude_dirs is not None:
+                for e_p in exclude_dirs:
+                    if e_p in subdirs:
+                        subdirs.remove(e_p)
+            if exclude_dirs_substring is not None:
+                to_rm = []
+                for d in subdirs:
+                    if exclude_dirs_substring in d:
+                        to_rm.append(d)
+                for e in to_rm:
+                    subdirs.remove(e)
+            arcname = os.path.join(enclosing_dir, dirname[len(abs_src) + 1:])
+            zf.write(dirname, arcname)
+            for filename in files:
+                if exclude_extensions is not None:
+                    if os.path.splitext(filename)[1] in exclude_extensions:
+                        continue  # do not zip it
+                absname = os.path.join(dirname, filename)
+                arcname = os.path.join(enclosing_dir, absname[len(abs_src) + 1:])
+                zf.write(absname, arcname)
+
+    #     # save a copy of the codebase. !!!Do not store heavy file in your codebase when using it.
+    #     code_dir = dirname(dirname(dirname(os.path.realpath(__file__))))   # '/data/project/rw/joonmyung/conference/2023CVPR/code_alpro'
+    #     code_zip_filename = os.path.join(args.output_dir, "code.zip")
+    #     LOGGER.info(f"Saving code from {code_dir} to {code_zip_filename}...")
+    #     make_zipfile(code_dir, code_zip_filename,
+    #                  enclosing_dir="code",
+    #                  exclude_dirs_substring="results",
+    #                  exclude_dirs=["__pycache__", "output", "data", "ext"],
+    #                  exclude_extensions=[".pyc", ".ipynb", ".swap", ".pt"])
+    #     LOGGER.info(f"Saving code done.")

@@ -10,5 +10,5 @@ v.param_groups.append({'params': a_1 })
 v.param_groups.append({'params': a_2 })
 
 
-loss = 10 -b(torch.cat((a_1,a_2), dim=1)).sum()
+loss = 10 - b(torch.cat((a_1,a_2), dim=1)).sum()
 loss.backward()

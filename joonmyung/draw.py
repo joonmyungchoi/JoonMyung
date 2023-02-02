@@ -2,6 +2,7 @@ from matplotlib import pyplot as plt, axes
 import torch.utils.data.distributed
 import torch.nn.parallel
 import torch.utils.data
+from PIL import Image
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -9,6 +10,7 @@ import torch.optim
 import pickle
 import pprint
 import torch
+import cv2
 import PIL
 
 
@@ -153,12 +155,15 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 
 
 def showImg(image):
-    if type(image) == torch.tensor():
+    if type(image) == torch.tensor:
         plt.imshow(image.permute(1, 2, 0))
         plt.show()
-    elif type(image) ==PIL.Image.Image:
+    elif type(image) == PIL.Image.Image:
         plt.imshow(image)
         plt.show()
+    elif type(image) == np.array:
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)) # 0.29
+        # plt.imshow(Image.fromarray(image))  # 0.32
 
 # import torch
 # import torch.nn as nn
