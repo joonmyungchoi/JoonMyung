@@ -1,7 +1,8 @@
 import torch.distributed as dist
 import argparse
+import zipfile
 import ast
-
+import os
 
 def to_np(v):
     return v.detach().cpu().numpy()
@@ -36,17 +37,12 @@ def get_rank():
         return 0
     return dist.get_rank()
 
-
-
 def is_dist_avail_and_initialized():
     if not dist.is_available():
         return False
     if not dist.is_initialized():
         return False
     return True
-
-import os
-import zipfile
 
 
 def make_zipfile(src_dir, save_path, enclosing_dir="", exclude_dirs=None, exclude_extensions=None,
@@ -89,3 +85,11 @@ def make_zipfile(src_dir, save_path, enclosing_dir="", exclude_dirs=None, exclud
     #                  exclude_dirs=["__pycache__", "output", "data", "ext"],
     #                  exclude_extensions=[".pyc", ".ipynb", ".swap", ".pt"])
     #     LOGGER.info(f"Saving code done.")
+
+
+
+def getDir(path):
+    return os.listdir(path)
+
+def isDir(path):
+    return os.path.exists(path)

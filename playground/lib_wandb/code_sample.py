@@ -1,6 +1,5 @@
 import argparse, torch, os, wandb, math
 import torch.nn.functional as F
-# Dummy
 from joonmyung import utils
 
 test_acc, best_acc, optimizer = 0, 0, 0 # Dummy
@@ -11,7 +10,8 @@ model, images, labels, outputs, predicted, test_table, log_counter, epoch = None
 
 parser = argparse.ArgumentParser(description='PyTorch Wandb Sapmle')
 parser.add_argument('--use_wandb', action='store_true')
-parser.add_argument('--wandb_project', default='2023ICCV', type=str)
+parser.add_argument('--wandb_project', default='test', type=str)
+# parser.add_argument('--wandb_project', default='2023ICCV', type=str)
 parser.add_argument('--wandb_entity', default='joonmyung', type=str)
 parser.add_argument('--wandb_table', default='Sample', type=str)
 parser.add_argument('--wandb_version', default='1.0.0', type=str, help="version")
@@ -45,8 +45,6 @@ columns = ["id", "image", "prediction", "label", *["logit_{}".format(d) for d in
 test_table = wandb.Table(columns=columns)
 
 # 2-B. Wandb Table
-# convenience funtion to log predictions for a batch of test images
-
 def log_test_predictions(images, labels, outputs, predicted, test_table, epoch, NUM_IMAGES_PER_BATCH=math.inf):
     # obtain confidence scores for all classes
     scores = F.softmax(outputs.data, dim=1)
@@ -64,6 +62,5 @@ def log_test_predictions(images, labels, outputs, predicted, test_table, epoch, 
         _id += 1
         if _id == NUM_IMAGES_PER_BATCH:
             break
-
 
 log_test_predictions(images, labels, outputs, predicted, test_table, epoch)

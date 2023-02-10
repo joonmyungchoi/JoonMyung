@@ -3,16 +3,16 @@ import torch.utils.data.distributed
 import torch.nn.parallel
 import torch.utils.data
 from PIL import Image
+from tqdm import tqdm
 import seaborn as sns
 import pandas as pd
 import numpy as np
 import torch.optim
-import pickle
-import pprint
 import torch
 import cv2
 import PIL
 
+from joonmyung.utils import to_np
 
 
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
@@ -152,30 +152,128 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 
 
 
+def rollout(attentions, discard_ratio, head_fusion, start=0, pool_seq=True):
+    device = attentions[0].device
+    result = torch.eye(attentions[0].size(-1), device=device)  # (197, 197)
+    with torch.no_grad():
+        for attention in attentions[start:]:  # 12 Layer
+            if head_fusion == "mean":
+                attention_heads_fused = attention.mean(axis=1)
+            elif head_fusion == "max":
+                attention_heads_fused = attention.max(axis=1)[0]  # (1, 3, 197, 197)
+            elif head_fusion == "min":
+                attention_heads_fused = attention.min(axis=1)[0]
+            else:
+                raise "Attention head fusion type Not supported"
+
+            # Drop the lowest attentions, but
+            flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)  # (1, 197 * 197)
+            _, indices = flat.topk(int(flat.size(-1) * discard_ratio), -1, False)
+            indices = indices[indices != 0]  # (34928)
+            flat[0, indices] = 0
+
+            I = torch.eye(attention_heads_fused.size(-1), device=device)
+            a = (attention_heads_fused + 1.0 * I) / 2
+            a = a / a.sum(dim=-1, keepdim=True)
+
+            result = torch.matmul(a, result)  # (1, 197, 197)
+
+    # Look at the total attention between the class token,
+    # and the image patches
+    mask = result[0, 0, 1:] if not pool_seq else result # (1, 256, 256)
+    # In case of 224x224 image, this brings us from 196 to 14
+    width = int(mask.size(-1) ** 0.5)
+    mask = mask.mean(dim=1)
+    mask = to_np(mask.reshape(width, width))
+    mask = mask / np.max(mask)
+    return mask
+
+def rollout_our(attentions, discard_ratio, head_fusion, start=0, cls=False):
+    device = attentions[0].device
+    result = torch.eye(attentions[0].size(-1), device=device)
+    with torch.no_grad():
+        for attention in attentions[start:]:  # 12 Layer
+            if head_fusion == "mean":
+                attention_heads_fused = attention.mean(axis=1)
+            elif head_fusion == "max":
+                attention_heads_fused = attention.max(axis=1)  # (1, 3, 197, 197)
+            elif head_fusion == "min":
+                attention_heads_fused = attention.min(axis=1)
+            else:
+                raise "Attention head fusion type Not supported"
+
+            # Drop the lowest attentions, but
+            result = torch.matmul(attention_heads_fused, result)  # (1, 197, 197)
+
+    # Look at the total attention between the class token,
+    # and the image patches
+    mask = result.mean(dim=1) # (1, 256, 256)
+    return mask
 
 
-def showImg(image):
-    if type(image) == torch.tensor:
-        plt.imshow(image.permute(1, 2, 0))
-        plt.show()
-    elif type(image) == PIL.Image.Image:
-        plt.imshow(image)
-        plt.show()
-    elif type(image) == np.array:
-        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)) # 0.29
-        # plt.imshow(Image.fromarray(image))  # 0.32
 
-# import torch
-# import torch.nn as nn
-# from torchviz import make_dot
-# from torch.autograd import Variable
-#
-# model = nn.Sequential()
-# model.add_module('W0', nn.Linear(8, 16))
-# model.add_module('tanh', nn.Tanh())
-#
-# # Variable을 통하여 Input 생성
-# x = Variable(torch.randn(1, 8))
-#
-# # 앞에서 생성한 model에 Input을 x로 입력한 뒤 (model(x))  graph.png 로 이미지를 출력합니다.
-# make_dot(model(x), params=dict(model.named_parameters())).render("graph", format="png")
+def rollout_our_draw(attentions, discard_ratio, head_fusion, start=0, cls=False):
+    device = attentions[0].device
+    result = torch.eye(attentions[0].size(-1), device=device)  # (197, 197)
+    with torch.no_grad():
+        for attention in attentions[start:]:  # 12 Layer
+            if head_fusion == "mean":
+                attention_heads_fused = attention.mean(axis=1)
+            elif head_fusion == "max":
+                attention_heads_fused = attention.max(axis=1)[0]  # (1, 3, 197, 197)
+            elif head_fusion == "min":
+                attention_heads_fused = attention.min(axis=1)[0]
+            else:
+                raise "Attention head fusion type Not supported"
+
+            # Drop the lowest attentions, but
+
+            result = torch.matmul(attention_heads_fused, result)  # (1, 197, 197)
+
+    # Look at the total attention between the class token,
+    # and the image patches
+    mask = result[0, 0, 1:] if cls else result.mean(dim=1) # (1, 256, 256)
+    # In case of 224x224 image, this brings us from 196 to 14
+    width = int(mask.size(-1) ** 0.5)
+    mask = to_np(mask.reshape(width, width))
+    mask = mask / np.max(mask)
+    return mask
+
+
+
+def data2PIL(datas):
+    if type(datas) == torch.Tensor:
+        if len(datas.shape) == 3: datas = datas.unsqueeze(0)
+        pils = datas.permute(0, 2, 3, 1).detach().cpu()
+    elif type(datas) == PIL.JpegImagePlugin.JpegImageFile:
+        pils = datas
+    elif type(datas) == np.ndarray:
+        if len(datas.shape) == 3: datas = np.expand_dims(datas, axis=0)
+        if datas.max() <= 1:
+            # image = Image.fromarray(image)                 # 0.32ms
+            pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)   # 0.29ms
+    else:
+        raise ValueError
+    return pils
+
+
+def drawImgPlot(datas, col=1, title:str=None, columns=None, p=False):
+    row = (len(datas) - 1) // col + 1
+
+    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
+    fig.set_size_inches(col * 8, row * 8)
+    if title: fig.suptitle(title, fontsize=16)
+
+    datas = data2PIL(datas)
+    for i, data in enumerate(datas):
+        r_num, c_num = i // col, i % col
+
+        ax = axes[r_num][c_num]
+        ax.imshow(data)
+        if columns:
+            ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
+
+    plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+    plt.tight_layout()
+    plt.show()
+

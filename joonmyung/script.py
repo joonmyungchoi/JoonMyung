@@ -85,6 +85,3 @@ def Process_Worker(processes, gpuWorker, p = True):
 # Process_Worker(processes, gpuWorker)
 
 
-# QA(Quality Assurance, 품질보증)
-# 1. 중간에 추가 실험, Queue 추가
-# 2.

@@ -23,7 +23,7 @@ def get_dataloader(is_train, batch_size, slice=5):
 # Number of epochs to run
 # Each epoch includes a training step and a test step, so this sets
 # the number of tables of test predictions to log
-EPOCHS = 1
+EPOCHS = 10
 
 # Number of batches to log from the test data for each test step
 # (default set low to simplify demo)
@@ -74,7 +74,8 @@ test_loader = get_dataloader(is_train=False, batch_size=2*BATCH_SIZE)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # ✨ W&B: Initialize a new run to track this model's training
-wandb.init(project="table-quickstart", entity="joonmyung")
+# wandb.init(project="table-quickstart", entity="joonmyung")
+wandb.init(entity="joonmyung", project="test", name="1.Table")
 
 # ✨ W&B: Log hyperparameters using config
 cfg = wandb.config
@@ -90,7 +91,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
 
 # convenience funtion to log predictions for a batch of test images
-def log_test_predictions(images, labels, outputs, predicted, test_table, log_counter):
+def log_test_predictions(images, labels, outputs, predicted, test_table, log_counter, epoch):
     # obtain confidence scores for all classes
     scores = F.softmax(outputs.data, dim=1)
     log_scores = scores.cpu().numpy()
@@ -102,7 +103,7 @@ def log_test_predictions(images, labels, outputs, predicted, test_table, log_cou
     for i, l, p, s in zip(log_images, log_labels, log_preds, log_scores):
         # add required info to data table:
         # id, image pixels, model's guess, true label, scores for all classes
-        img_id = str(_id) + "_" + str(log_counter)
+        img_id =w str(epoch) + "_" + str(_id) + "_" + str(log_counter)
         test_table.add_data(img_id, wandb.Image(i), p, l, *s)
         _id += 1
         if _id == NUM_IMAGES_PER_BATCH:
@@ -148,7 +149,7 @@ for epoch in range(EPOCHS):
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             if log_counter < NUM_BATCHES_TO_LOG:
-                log_test_predictions(images, labels, outputs, predicted, test_table, log_counter)
+                log_test_predictions(images, labels, outputs, predicted, test_table, log_counter, epoch)
                 log_counter += 1
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
