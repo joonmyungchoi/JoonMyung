@@ -1,5 +1,10 @@
 from matplotlib import pyplot as plt, axes
 import torch.utils.data.distributed
+from torchcam.utils import overlay_mask
+from torchvision.transforms.functional import to_pil_image
+
+from joonmyung.data import normalization
+from joonmyung.utils import to_np
 import torch.nn.parallel
 import torch.utils.data
 from PIL import Image
@@ -11,17 +16,66 @@ import torch.optim
 import torch
 import cv2
 import PIL
+import os
 
-from joonmyung.utils import to_np
 
+
+
+# def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
+#                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
+#                 linecolor=None, linewidths=0.1, fontsize=30,
+#                 cmap="Greys", cbar=True):
+#     row = (len(matrixes) - 1) // col + 1
+#     annot = True if fmt > 0 else False
+#
+#
+#     if p:
+#         print("|- Parameter Information")
+#         print("  |- Data Info (G, H, W)")
+#         print("    |- G : Graph Num")
+#         print("    |- H : height data dimension")
+#         print("    |- W : weidth data dimension")
+#         print("  |- AXIS Information")
+#         print("    |- col        : 컬럼 갯수")
+#         print("    |- row : {}, col : {}".format(row, col))
+#         print("    |- height : {}, width : {}".format(row * 8, col * 8))
+#         print("    |- title      : 컬럼별 제목")
+#         print("    |- p          : 정보 출력")
+#         print()
+#         print("  |- Graph Information")
+#         print("    |- vmin/vmax  : 히트맵 최소/최대 값")
+#         print("    |- linecolor  : black, ...   ")
+#         print("    |- linewidths : 1.0...   ")
+#         print("    |- fmt        : 숫자 출력 소숫점 자릿 수")
+#         print("    |- cmap        : Grey")
+#         print("    |- cbar        : 오른쪽 바 On/Off")
+#         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
+#         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
+#     if title:
+#         title = title + list(range(len(title), len(matrixes) - len(title)))
+#     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
+#     fig.set_size_inches(col * 8, row * 8)
+#
+#     for e, matrix in enumerate(matrixes):
+#         if type(matrix) == torch.Tensor:
+#             matrix = matrix.detach().cpu().numpy()
+#         ax = axes[e // col][e % col]
+#         sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
+#                     , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
+#                     , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
+#                     , ax=ax)
+#         if title:
+#             ax.set(title="{} : {}".format(title, e))
+#         ax.spines[["bottom", "top", "left", "right"]].set_visible(True)
+#     plt.show()
 
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
-                linecolor=None, linewidths=0.1, fontsize=30,
-                cmap="Greys", cbar=True):
+                linecolor=None, linewidths=0.1, fontsize=30, r=[1,1],
+                cmap="Greys", cbar=True, l=0, border=False,
+                output_dir=None, file_name=None, draw=True):
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
-
 
     if p:
         print("|- Parameter Information")
@@ -31,8 +85,8 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         print("    |- W : weidth data dimension")
         print("  |- AXIS Information")
         print("    |- col        : 컬럼 갯수")
-        print("    |- row : {}, col : {}".format(row, col))
-        print("    |- height : {}, width : {}".format(row * 8, col * 8))
+        print("    |- row        : {}, col : {}".format(row, col))
+        print("    |- height     : {}, width : {}".format(row * 8, col * 8))
         print("    |- title      : 컬럼별 제목")
         print("    |- p          : 정보 출력")
         print()
@@ -48,34 +102,30 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
     if title:
         title = title + list(range(len(title), len(matrixes) - len(title)))
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
-    fig.set_size_inches(col * 8, row * 8)
-
-    for e, matrix in enumerate(matrixes):
+    fig.set_size_inches(col * 8 * r[1], row * 8 * r[0])
+    fig.patch.set_facecolor('white')
+    for e, matrix in enumerate(tqdm(matrixes)):
         if type(matrix) == torch.Tensor:
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
-        sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
-                    , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
-                    , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
-                    , ax=ax)
+        res = sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
+                          , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
+                          , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
+                          , ax=ax)
+
+        if border:
+            for _, spine in res.spines.items():
+                spine.set_visible(True)
+
         if title:
             ax.set(title="{} : {}".format(title, e))
-        ax.spines[["bottom", "top", "left", "right"]].set_visible(True)
-    plt.show()
 
-
-def makeSample(shape, min=None, max=None, dataType=int, outputType=np, columns=None):
-    if dataType == int:
-        d = np.random.randint(min, max, size=shape)
-    elif dataType == float:
-        d = np.random.uniform(low=min, high=max, size=shape)
-
-    if outputType == np:
-        return d
-    elif outputType == pd:
-        return pd.DataFrame(d, columns=None)
-    elif outputType == torch:
-        return torch.from_numpy(d)
+    if output_dir and file_name:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(os.path.join(output_dir, file_name))
+    if draw:
+        plt.show()
 
 
 def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, markers=False, columns=None, p=False):
@@ -263,8 +313,8 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None, p=False):
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
     fig.set_size_inches(col * 8, row * 8)
     if title: fig.suptitle(title, fontsize=16)
-
-    datas = data2PIL(datas)
+    if type(datas) == torch.Tensor:
+        datas = data2PIL(datas)
     for i, data in enumerate(datas):
         r_num, c_num = i // col, i % col
 
@@ -277,3 +327,14 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None, p=False):
     plt.tight_layout()
     plt.show()
 
+
+def overlay(imgs, attns_L):
+    # imgs  : (B, C, H, W)
+    # attns : (L, B, h, w)
+    results = []
+    if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0)
+    for attns in attns_L:
+        for img, attn in zip(imgs, attns):
+            result = overlay_mask(to_pil_image(img.detach().cpu()), to_pil_image(normalization(attn, type=0), mode='F'))
+            results.append(result)
+    return results

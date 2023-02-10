@@ -2,10 +2,10 @@ import wandb
 import torch
 import os
 
-from joonmyung.analysis import JDataset
+from joonmyung.directory.analysis import JDataset
 from joonmyung.draw import data2PIL
 from joonmyung.utils import to_np
-import numpy as np
+
 
 class AverageMeter:
     ''' Computes and stores the average and current value. '''
@@ -40,9 +40,6 @@ class AverageMeter:
               f'loss {losses.val:.4f} ({losses.avg:.4f})\t' \n\
               f'acc {avg_score.val:.4f} ({avg_score.avg:.4f})')"
 
-
-
-import time
 
 class Logger():
     loggers = {}

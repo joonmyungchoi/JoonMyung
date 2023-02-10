@@ -20,3 +20,8 @@ def columnRemove(df, ns):
 #     columnRename(df, [['c1_p', 'c1_a'] , ['c2_p', 'c2_a']])
 
 
+def normalization(t, type = 0):
+    if type == 0:
+        return t / t.max()
+    elif type == 1:
+        return t / t.min()
