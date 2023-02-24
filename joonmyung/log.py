@@ -2,9 +2,9 @@ import wandb
 import torch
 import os
 
-from joonmyung.directory.analysis import JDataset
 from joonmyung.draw import data2PIL
 from joonmyung.utils import to_np
+from playground.analysis.data.dataset import JDataset
 
 
 class AverageMeter:
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     dataset = JDataset(root_path, dataset)
     inputs, targets, imgs, label_names = dataset.getitems(data_num)
 
-    logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_table="LOGGGG",
+    logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="LOGGGG",
                     wandb_watch=False)
 
     logger.addLog({ "sample A": [0, 1],
@@ -118,5 +118,3 @@ if __name__ == "__main__":
                     "sample C": [0, 3],
                     "table  B": [2, {"image" :     inputs, "prediction": targets}]})
     logger.logWandb()
-
-    print(1)

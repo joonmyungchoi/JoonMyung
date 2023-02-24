@@ -1,6 +1,7 @@
 .idea/**
 joonmyung/.idea/**
 playground/**
+#algorithm/**
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
