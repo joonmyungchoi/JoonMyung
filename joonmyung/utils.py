@@ -7,11 +7,24 @@ import torch
 import ast
 import os
 
-def to_np(v):
-    return v.detach().cpu().numpy()
+def to_leaf(vs):
+    return [v.detach().cpu() for v in vs] if type(vs) == list else vs.detach().cpu()
+
+def to_np(vs):
+    if type(vs) == list:
+        return [v.detach().cpu().numpy() if type(v) is not np.ndarray else v for v in vs]
+    else:
+        return vs.detach().cpu().numpy() if type(vs) is not np.ndarray else vs
+
+def to_tensor(vs):
+    if type(vs) == list:
+        return [torch.Tensor(v) if type(v) is not torch.Tensor else v for v in vs]
+    else:
+        return torch.Tensor(vs) if type(vs) is not torch.Tensor else vs
+
 
 def str2list(s):
-    v = ast.literal_eval(s)
+    v = ast.literal_eval(s.replace(" ", ",").replace(",,", ","))
     if type(v) is not list:
         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
     return v

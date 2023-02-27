@@ -1,9 +1,9 @@
-from matplotlib import pyplot as plt, axes
+from matplotlib import pyplot as plt
 import torch.utils.data.distributed
 from torchvision.transforms.functional import to_pil_image
 
 from joonmyung.data import normalization
-from joonmyung.utils import to_np
+from joonmyung.utils import to_leaf, to_tensor
 import torch.nn.parallel
 import torch.utils.data
 from PIL import Image
@@ -12,12 +12,11 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import torch.optim
-import matplotlib
+import matplotlib as mpl
 import torch
 import cv2
 import PIL
 import os
-
 
 
 
@@ -202,53 +201,56 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 
 
 #
-# def rollout(attentions, discard_ratio, head_fusion, start=0, pool_seq=True):
-#     device = attentions[0].device
-#     result = torch.eye(attentions[0].size(-1), device=device)  # (197, 197)
-#     with torch.no_grad():
-#         for attention in attentions[start:]:  # 12 Layer
-#             if head_fusion == "mean":
-#                 attention_heads_fused = attention.mean(axis=1)
-#             elif head_fusion == "max":
-#                 attention_heads_fused = attention.max(axis=1)[0]  # (1, 3, 197, 197)
-#             elif head_fusion == "min":
-#                 attention_heads_fused = attention.min(axis=1)[0]
-#             else:
-#                 raise "Attention head fusion type Not supported"
-#
-#             # Drop the lowest attentions, but
-#             flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)  # (1, 197 * 197)
-#             _, indices = flat.topk(int(flat.size(-1) * discard_ratio), -1, False)
-#             indices = indices[indices != 0]  # (34928)
-#             flat[0, indices] = 0
-#
-#             I = torch.eye(attention_heads_fused.size(-1), device=device)
-#             a = (attention_heads_fused + 1.0 * I) / 2
-#             a = a / a.sum(dim=-1, keepdim=True)
-#
-#             result = torch.matmul(a, result)  # (1, 197, 197)
-#
-#     # Look at the total attention between the class token,
-#     # and the image patches
-#     mask = result[0, 0, 1:] if not pool_seq else result # (1, 256, 256)
-#     # In case of 224x224 image, this brings us from 196 to 14
-#     width = int(mask.size(-1) ** 0.5)
-#     mask = mask.mean(dim=1)
-#     mask = to_np(mask.reshape(width, width))
-#     mask = mask / np.max(mask)
-#     return mask
+def rollout(attentions, discard_ratio, head_fusion):
+    result = torch.eye(attentions[0].size(-1))
+    with torch.no_grad():
+        for attention in attentions:
+            if head_fusion == "mean":
+                attention_heads_fused = attention.mean(axis=1)
+            elif head_fusion == "max":
+                attention_heads_fused = attention.max(axis=1)[0]
+            elif head_fusion == "min":
+                attention_heads_fused = attention.min(axis=1)[0]
+            else:
+                raise "Attention head fusion type Not supported"
+
+            # Drop the lowest attentions, but
+            # don't drop the class token
+            flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
+            _, indices = flat.topk(int(flat.size(-1) * discard_ratio), -1, False)
+            indices = indices[indices != 0]
+            flat[0, indices] = 0
+
+            I = torch.eye(attention_heads_fused.size(-1))
+            a = (attention_heads_fused + 1.0 * I) / 2
+            a = a / a.sum(dim=-1)
+
+            result = torch.matmul(a, result)
+
+    # Look at the total attention between the class token,
+    # and the image patches
+    mask = result[0, 0, 1:]
+    # In case of 224x224 image, this brings us from 196 to 14
+    width = int(mask.size(-1) ** 0.5)
+    mask = mask.reshape(width, width).numpy()
+    mask = mask / np.max(mask)
+    return mask
 
 @torch.no_grad()
-def rollout(attentions, head_fusion="mean",  bs=None, starts=None, ls=None, reshape=False):
+def rollout(attentions, head_fusion="mean",  bs=None, starts=None, ls=None, point="cls", cls_token=0, reshape=False
+            , discard_ratio = 0.1, mean = True):
+    # attentions : L * (B, H, h, w)
     device = attentions[0].device
     if type(attentions) == list: attentions = torch.stack(attentions, dim=0) # (L, B, H, w, h)
 
     if head_fusion == "mean":
         attentions = attentions.mean(axis=2) #
     elif head_fusion == "max":
-        attentions = attentions.max(axis=2)
+        attentions = attentions.max(axis=2)[0]
     elif head_fusion == "min":
-        attentions = attentions.min(axis=2)
+        attentions = attentions.min(axis=2)[0]
+    elif head_fusion == "median":
+        attentions = attentions.median(axis=2)[0]
     else:
         raise "Attention head fusion type Not supported"
 
@@ -258,15 +260,27 @@ def rollout(attentions, head_fusion="mean",  bs=None, starts=None, ls=None, resh
     _, B, _, T = attentions.shape
     H = W = int(T ** 0.5)
     if starts is not None:
-        results = []
+        results, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
         for start in starts:
-            result = torch.eye(T, device=device) # (196, 196)
-            for attention in attentions[start:]:  # (L, B, w, h)
-                result = torch.matmul(attention, result)  # (1, 197, 197)
-            results.append(result.mean(dim=1))
+            result = I
+            for attn in copy.deepcopy(attentions[start:]):  # (L, B, w, h)
+                flat = attn.reshape(B, -1)
+                _, indices = flat.topk(int(flat.shape[-1] * discard_ratio), -1, False)
+                indices = indices * (indices != 0)
+                for b in range(B):
+                    flat[b, indices[b]] = 0
+
+                attn = (attn + 1.0 * I) / 2
+                attn = attn / attn.sum(dim=-1, keepdim=True)
+                result = torch.matmul(attn, result)  # (1, 197, 197)
+            result = result[:, :cls_token, cls_token:] if point == "cls" else result[:, cls_token:, cls_token:]
+            result = result / result.max(dim=-1, keepdim=True)[0]
+
+            results.append(result.mean(dim=1) if mean else result)
         results = torch.stack(results, dim=0)
+
     if ls is not None:
-        results = attentions[ls].mean(dim=2) # (L, B, T)
+        results = attentions[ls, :, 0, cls_token:] if point == "cls" else attentions[ls, :, cls_token:, cls_token:].mean(dim=2)
 
     return results.reshape(-1, B, H, W) if reshape else results
 
@@ -292,15 +306,13 @@ def data2PIL(datas):
         raise ValueError
     return pils
 
-
-def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None, p=False,
-    output_dir=None, file_name=None, show=True):
-    if type(datas) != list: datas = [datas]
+def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
+    output_dir=None, file_name=None, show=True, p=False):
+    if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
 
     if showRows is not None:
         for d in range(len(datas)):
             datas[d] = datas[d][showRows]
-
     data_num = len(datas[0]) * len(datas)
     row = (data_num - 1) // col + 1
 
@@ -335,7 +347,7 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
 
 
 def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alpha: float = 0.7) -> Image.Image:
-    cmap = matplotlib.cm.get_cmap(colormap)
+    cmap = mpl.cm.get_cmap(colormap)
     # Resize mask and apply colormap
     overlay = mask.resize(img.size, resample=Image.BICUBIC)
     overlay = (255 * cmap(np.asarray(overlay) ** 2)[:, :, :3]).astype(np.uint8)
@@ -344,25 +356,27 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
     return overlayed_img
 
+
 def overlay(imgs, attnsL, dataset=None):
+    attnsL = to_leaf(to_tensor(attnsL))
+    imgs   = to_leaf(to_tensor(imgs))
     if type(attnsL) == list:  attnsL = torch.stack(attnsL, 0)
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0) # L, B, h, w
     if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0) # B, C, H, W
 
-    imgs  = unNormalize(imgs.detach().cpu(), dataset)
+    imgs  = unNormalize(imgs, dataset)
     results = []
     for attns in attnsL:
         for img, attn in zip(imgs, attns):
-            result = overlay_mask(to_pil_image(img), to_pil_image(normalization(attn, type=0), mode='F'))
-        # plt.imshow(overlay_mask(to_pil_image(dataset.unNormalize(samples)[0]), to_pil_image(normalization(a[:, 0]), mode='F'), alpha=0.5))
-                    # (3, 224, 224)
-                    # (1, 14, 14)
+            result = overlay_mask(to_pil_image(img), to_pil_image(normalization(attn, type=0), mode='F')) # (3, 224, 224), (1, 14, 14)
+            # plt.imshow(overlay_mask(to_pil_image(dataset.unNormalize(samples)[0]), to_pil_image(normalization(a[:, 0]), mode='F'), alpha=0.5))
             results.append(result)
     return results
 
 import copy
 def unNormalize(image, dataset):
+    # images : (B, C, H, W)
     if dataset == "imagenet":
         mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
     elif dataset == "cifar":
@@ -374,3 +388,13 @@ def unNormalize(image, dataset):
     for c, (m, s) in enumerate(zip(mean, std)):
         result[:, c].mul_(s).add_(m)
     return result
+
+
+
+def show_mask_on_image(img, mask):
+    img = np.float32(img) / 255
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return np.uint8(255 * cam)
