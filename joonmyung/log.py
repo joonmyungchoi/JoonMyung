@@ -1,11 +1,8 @@
+from joonmyung.draw import data2PIL
+from joonmyung.utils import to_np
 import wandb
 import torch
 import os
-
-from joonmyung.draw import data2PIL
-from joonmyung.utils import to_np
-from playground.analysis.data.dataset import JDataset
-
 
 class AverageMeter:
     ''' Computes and stores the average and current value. '''
@@ -101,6 +98,7 @@ class Logger():
         wandb.finish()
 
 if __name__ == "__main__":
+    from playground.analysis.utils.dataset import JDataset
     root_path = "/hub_data/joonmyung/data"
     dataset, num_classes, epoch = "cifar100", 10, 1
     data_num = [[5, 1],

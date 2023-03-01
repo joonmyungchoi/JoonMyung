@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="joonmyung",
-    version="1.3.1",
+    version="1.3.3",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",

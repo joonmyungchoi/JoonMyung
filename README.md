@@ -1,22 +1,30 @@
 # 1. Introduction
 JoonMyung Choi's Package
+
+
 # 2. ToDo List
 ### a. Library 
 1. joonmyung/Script
  - [ ] 추가 스크립트, Queue 추가 
- - [ ] Multi-GPU 적용
 
 2. joonmyung/draw 
  - [ ] LinePlot 수정
-
-3. joonmyung/log
-- [ ] type에 대한 확인
-
+ 
 ### b. Playground
-1. playground/profiling
-   - [ ] 속도 측정 비교 메서드 구체화
+
 
 # 3. Previous
+## Version 1.3.2
+1. joonmyung/Script
+ - [X] Multi-GPU 적용
+2joonmyung/draw
+ - [X] rollout (Attention, Gradient) 추가   
+3. joonmyung/log
+ - [X] type에 대한 확인
+4. playground/profiling
+ - [X] 속도 측정 비교 메서드 구체화
+
+
 ## Version 1.3.1
 ### a. Library
 1. joonmyung/draw 

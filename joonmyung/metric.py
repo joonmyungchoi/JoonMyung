@@ -1,8 +1,8 @@
 from fvcore.nn import FlopCountAnalysis, flop_count_table, flop_count_str
-from thop import profile
 from joonmyung.utils import is_dist_avail_and_initialized
 from collections import defaultdict, deque
 import torch.distributed as dist
+from thop import profile
 import datetime
 import torch
 import time
@@ -168,12 +168,16 @@ class MetricLogger(object):
             header, total_time_str, total_time / len(iterable)))
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output, target, topk=(1,), ana=True):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     maxk = max(topk)
-    batch_size = target.size(0)
     _, pred = output.topk(maxk, 1, True, True)
+    batch_size = target.size(0)
     pred = pred.t()
     correct = pred.eq(target.reshape(1, -1).expand_as(pred))
     return [correct[:k].reshape(-1).float().sum(0) * 100. / batch_size for k in topk]
 
+def targetPred(output, target, topk=5):
+    _, pred = output.topk(topk, 1, True, True)
+    TP = torch.cat([target.unsqueeze(-1), pred], dim=1)
+    return TP

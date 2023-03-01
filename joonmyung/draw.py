@@ -1,9 +1,9 @@
+from torchvision.transforms.functional import to_pil_image
+from joonmyung.utils import to_leaf, to_tensor
+from joonmyung.data import normalization
 from matplotlib import pyplot as plt
 import torch.utils.data.distributed
-from torchvision.transforms.functional import to_pil_image
-
-from joonmyung.data import normalization
-from joonmyung.utils import to_leaf, to_tensor
+import matplotlib as mpl
 import torch.nn.parallel
 import torch.utils.data
 from PIL import Image
@@ -12,61 +12,10 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import torch.optim
-import matplotlib as mpl
 import torch
 import cv2
 import PIL
 import os
-
-
-
-# def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
-#                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
-#                 linecolor=None, linewidths=0.1, fontsize=30,
-#                 cmap="Greys", cbar=True):
-#     row = (len(matrixes) - 1) // col + 1
-#     annot = True if fmt > 0 else False
-#
-#
-#     if p:
-#         print("|- Parameter Information")
-#         print("  |- Data Info (G, H, W)")
-#         print("    |- G : Graph Num")
-#         print("    |- H : height data dimension")
-#         print("    |- W : weidth data dimension")
-#         print("  |- AXIS Information")
-#         print("    |- col        : 컬럼 갯수")
-#         print("    |- row : {}, col : {}".format(row, col))
-#         print("    |- height : {}, width : {}".format(row * 8, col * 8))
-#         print("    |- title      : 컬럼별 제목")
-#         print("    |- p          : 정보 출력")
-#         print()
-#         print("  |- Graph Information")
-#         print("    |- vmin/vmax  : 히트맵 최소/최대 값")
-#         print("    |- linecolor  : black, ...   ")
-#         print("    |- linewidths : 1.0...   ")
-#         print("    |- fmt        : 숫자 출력 소숫점 자릿 수")
-#         print("    |- cmap        : Grey")
-#         print("    |- cbar        : 오른쪽 바 On/Off")
-#         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
-#         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
-#     if title:
-#         title = title + list(range(len(title), len(matrixes) - len(title)))
-#     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
-#     fig.set_size_inches(col * 8, row * 8)
-#
-#     for e, matrix in enumerate(matrixes):
-#         if type(matrix) == torch.Tensor:
-#             matrix = matrix.detach().cpu().numpy()
-#         ax = axes[e // col][e % col]
-#         sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
-#                     , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
-#                     , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
-#                     , ax=ax)
-#         if title:
-#             ax.set(title="{} : {}".format(title, e))
-#         ax.spines[["bottom", "top", "left", "right"]].set_visible(True)
-#     plt.show()
 
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
@@ -98,6 +47,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         print("    |- cbar        : 오른쪽 바 On/Off")
         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
+
     if title:
         title = title + list(range(len(title), len(matrixes) - len(title)))
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
@@ -198,50 +148,16 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
                         g.axvline(c_ind, ls='--', c="red")
     plt.show()
 
-
-
-#
-def rollout(attentions, discard_ratio, head_fusion):
-    result = torch.eye(attentions[0].size(-1))
-    with torch.no_grad():
-        for attention in attentions:
-            if head_fusion == "mean":
-                attention_heads_fused = attention.mean(axis=1)
-            elif head_fusion == "max":
-                attention_heads_fused = attention.max(axis=1)[0]
-            elif head_fusion == "min":
-                attention_heads_fused = attention.min(axis=1)[0]
-            else:
-                raise "Attention head fusion type Not supported"
-
-            # Drop the lowest attentions, but
-            # don't drop the class token
-            flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
-            _, indices = flat.topk(int(flat.size(-1) * discard_ratio), -1, False)
-            indices = indices[indices != 0]
-            flat[0, indices] = 0
-
-            I = torch.eye(attention_heads_fused.size(-1))
-            a = (attention_heads_fused + 1.0 * I) / 2
-            a = a / a.sum(dim=-1)
-
-            result = torch.matmul(a, result)
-
-    # Look at the total attention between the class token,
-    # and the image patches
-    mask = result[0, 0, 1:]
-    # In case of 224x224 image, this brings us from 196 to 14
-    width = int(mask.size(-1) ** 0.5)
-    mask = mask.reshape(width, width).numpy()
-    mask = mask / np.max(mask)
-    return mask
-
 @torch.no_grad()
-def rollout(attentions, head_fusion="mean",  bs=None, starts=None, ls=None, point="cls", cls_token=0, reshape=False
-            , discard_ratio = 0.1, mean = True):
-    # attentions : L * (B, H, h, w)
+def rollout(attentions, gradients=None, head_fusion="mean", discard_ratios = [0.1], starts=[0], ls=None, bs=None, data_from="cls"
+            , cls_start=0, cls_end=1, patch_start=1, patch_end=None
+            , reshape=False, mean = True):
+    # attentions : L * (B, H, h, w), gradients : L * (B, H, h, w)
     device = attentions[0].device
-    if type(attentions) == list: attentions = torch.stack(attentions, dim=0) # (L, B, H, w, h)
+    if type(discard_ratios) is not list: discard_ratios = [discard_ratios]
+
+    attentions = torch.stack(attentions, dim=0) # (L, B, H, w, h)
+    if gradients: attentions = attentions * torch.stack(gradients, dim=0) # (L, B, H, w, h)
 
     if head_fusion == "mean":
         attentions = attentions.mean(axis=2) #
@@ -261,26 +177,30 @@ def rollout(attentions, head_fusion="mean",  bs=None, starts=None, ls=None, poin
     H = W = int(T ** 0.5)
     if starts is not None:
         results, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
-        for start in starts:
-            result = I
-            for attn in copy.deepcopy(attentions[start:]):  # (L, B, w, h)
-                flat = attn.reshape(B, -1)
-                _, indices = flat.topk(int(flat.shape[-1] * discard_ratio), -1, False)
-                indices = indices * (indices != 0)
-                for b in range(B):
-                    flat[b, indices[b]] = 0
+        for discard_ratio in discard_ratios:
+            for start in starts:
+                result = I
+                for attn in copy.deepcopy(attentions[start:]):  # (L, B, w, h)
+                    flat = attn.reshape(B, -1)
+                    _, indices = flat.topk(int(flat.shape[-1] * discard_ratio), -1, False)
+                    indices = indices * (indices != 0)
+                    for b in range(B):
+                        flat[b, indices[b]] = 0
 
-                attn = (attn + 1.0 * I) / 2
-                attn = attn / attn.sum(dim=-1, keepdim=True)
-                result = torch.matmul(attn, result)  # (1, 197, 197)
-            result = result[:, :cls_token, cls_token:] if point == "cls" else result[:, cls_token:, cls_token:]
-            result = result / result.max(dim=-1, keepdim=True)[0]
+                    attn = (attn + 1.0 * I) / 2
+                    attn = attn / attn.sum(dim=-1, keepdim=True)
+                    result = torch.matmul(attn, result)  # (1, 197, 197)
 
-            results.append(result.mean(dim=1) if mean else result)
+
+                result = result[:, cls_start:cls_end, patch_start:patch_end] if data_from == "cls" else result[:, patch_start:patch_end, patch_start:patch_end]
+                if mean:
+                    result = result.mean(dim=1) if mean else result
+                result = result / result.max(dim=-1, keepdim=True)[0]
+                results.append(result)
         results = torch.stack(results, dim=0)
 
     if ls is not None:
-        results = attentions[ls, :, 0, cls_token:] if point == "cls" else attentions[ls, :, cls_token:, cls_token:].mean(dim=2)
+        results = attentions[ls, :, cls_start:cls_end, patch_start:patch_end] if data_from == "cls" else attentions[ls, :, patch_start:patch_end, patch_start:patch_end].mean(dim=2)
 
     return results.reshape(-1, B, H, W) if reshape else results
 
@@ -343,8 +263,6 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
         plt.savefig(os.path.join(output_dir, file_name))
     if show:
         plt.show()
-    
-
 
 def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alpha: float = 0.7) -> Image.Image:
     cmap = mpl.cm.get_cmap(colormap)
@@ -355,6 +273,7 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
     overlayed_img = Image.fromarray((alpha * np.asarray(img) + (1 - alpha) * overlay).astype(np.uint8))
 
     return overlayed_img
+
 
 
 def overlay(imgs, attnsL, dataset=None):
@@ -388,8 +307,6 @@ def unNormalize(image, dataset):
     for c, (m, s) in enumerate(zip(mean, std)):
         result[:, c].mul_(s).add_(m)
     return result
-
-
 
 def show_mask_on_image(img, mask):
     img = np.float32(img) / 255
