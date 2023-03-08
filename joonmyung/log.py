@@ -48,10 +48,12 @@ class Logger():
         self.use_wandb = use_wandb and main_process
 
         if self.use_wandb:
-            if not wandb_id: wandb_id = re.sub('[^A-Za-z0-9]+', '', str(args))
+            if not wandb_id: wandb_id = re.sub('[^A-Za-z0-9]+', '', "".join([wandb_project, wandb_version, wandb_name]))
 
             wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name, resume="True",
                        config=args, id = wandb_id)
+
+            args.wandb_id = wandb.run.id
             if wandb_watch and model: wandb.watch(model, log='all')
             if save and args: torch.save({'args': args, }, os.path.join(wandb.run.dir, "args.pt"))
 
