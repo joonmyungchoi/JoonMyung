@@ -3,6 +3,7 @@ from joonmyung.utils import to_np
 import wandb
 import torch
 import os
+import re
 
 class AverageMeter:
     ''' Computes and stores the average and current value. '''
@@ -40,17 +41,19 @@ class AverageMeter:
 
 class Logger():
     loggers = {}
-    def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None, wandb_watch=False
-                     , args=None, model=False
-                     , save=True):
-        self.use_wandb = use_wandb
-        if use_wandb:
-            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name, resume="allow",
-                       config=args, id=wandb_project+"+"+wandb_name)
+    def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None
+                 , wandb_watch=False, main_process=True, wandb_id=None
+                 , args=None, model=False
+                 , save=True):
+        self.use_wandb = use_wandb and main_process
+
+        if self.use_wandb:
+            if not wandb_id: wandb_id = re.sub('[^A-Za-z0-9]+', '', str(args))
+
+            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name, resume="True",
+                       config=args, id = wandb_id)
             if wandb_watch and model: wandb.watch(model, log='all')
             if save and args: torch.save({'args': args, }, os.path.join(wandb.run.dir, "args.pt"))
-
-
 
     def getLog(self, k, return_type =None):
         if return_type == "avg":
@@ -67,8 +70,7 @@ class Logger():
     def resetLog(self):
         self.loggers = {k:AverageMeter() if type(v) == AverageMeter else v for k, v in self.loggers.items()}
 
-
-    def addLog(self, datas:dict, epoch=None, bs = 1):
+    def addLog(self, datas:dict, epoch=None, mae_task_type = None, bs = 1):
         for k, v in datas.items():
             data_type = v[0]
             if data_type == 0:  # Values
@@ -80,9 +82,9 @@ class Logger():
             elif data_type == 2: # Table
                 columns = list(v[1].keys())
                 data_num = len(list(v[1].values())[0])
-                self.loggers[k] = wandb.Table(columns=["epoch"] + columns)
+                self.loggers[k] = wandb.Table(columns=["epoch", "MTT"] + columns)
                 for idx in range(data_num):
-                    self.loggers[k].add_data(str(epoch), *[wandb.Image(to_np(data2PIL(v[1][k][idx]))) if len(v[1][k].shape) == 4 else to_np(v[1][k])[idx] for k in columns])
+                    self.loggers[k].add_data(str(epoch), str(mae_task_type), *[wandb.Image(to_np(data2PIL(v[1][k][idx]))) if len(v[1][k].shape) == 4 else to_np(v[1][k])[idx] for k in columns])
         return True
 
     def getPath(self):
@@ -91,6 +93,7 @@ class Logger():
     def logWandb(self):
         if self.use_wandb:
             wandb.log({k:v.avg if type(v) == AverageMeter else v for k, v in self.loggers.items()})
+            self.resetLog()
         else:
             print("Wandb is not Working Now")
 
@@ -98,21 +101,23 @@ class Logger():
         wandb.finish()
 
 if __name__ == "__main__":
-    from playground.analysis.utils.dataset import JDataset
-    root_path = "/hub_data/joonmyung/data"
-    dataset, num_classes, epoch = "cifar100", 10, 1
+    from playground.analysis.lib_import import *
+    dataset_name, server, device = "imagenet", "148", "cuda"
+    data_path, _ = data2path(server, dataset_name)
     data_num = [[5, 1],
                 [5, 2],
                 [5, 3],
                 [5, 4]]
-    dataset = JDataset(root_path, dataset)
-    inputs, targets, imgs, label_names = dataset.getitems(data_num)
+    dataset = JDataset(data_path, dataset_name, device=device)
+    samples, targets, imgs, label_names = dataset.getItems(data_num)
 
-    logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="LOGGGG",
+    logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="AAPP", wandb_id="ABCD",
                     wandb_watch=False)
 
-    logger.addLog({ "sample A": [0, 1],
-                    "sample B": [0, 2],
-                    "sample C": [0, 3],
-                    "table  B": [2, {"image" :     inputs, "prediction": targets}]})
+    logger.addLog({ "sample A": [0, 4],
+                    "sample B": [0, 3],
+                    "sample C": [0, 2],
+                    "table  B": [2, {"image" :     samples, "prediction": targets}]})
     logger.logWandb()
+
+    logger.finish()

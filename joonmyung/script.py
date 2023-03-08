@@ -69,8 +69,7 @@ def Process_Worker(processes, gpuWorker, p = True):
         gpu = gpuWorker.getGPU()
         prefix = f"CUDA_VISIBLE_DEVICES={gpu} nohup "
         suffix = f" > {i+1}:gpu{gpu}.log 2>&1 &"
-        if p:
-            print("------ {}:GPU{}  {} ------".format(i + 1, gpu, process))
+        print("------ {}:GPU{}  {} ------".format(i + 1, gpu, prefix + process + suffix))
         subprocess.call(prefix + process + suffix, shell=True)
 
     end = time.localtime()

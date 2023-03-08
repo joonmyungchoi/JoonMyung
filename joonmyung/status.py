@@ -1,9 +1,9 @@
 
-import os
-import torch
-import random
 import numpy as np
-
+import GPUtil
+import random
+import torch
+import os
 
 
 def setGPU(gpuNum):
@@ -45,3 +45,5 @@ def on_terminate(proc):
     print("process {} terminated".format(proc))
 
 
+def gpuUtil():
+    GPUtil.showUtilization()

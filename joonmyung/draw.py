@@ -149,15 +149,16 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
     plt.show()
 
 @torch.no_grad()
-def rollout(attentions, gradients=None, head_fusion="mean", discard_ratios = [0.1], starts=[0], ls=None, bs=None, data_from="cls"
+def rollout(attentions=None, gradients=None, head_fusion="mean", discard_ratios = [0.1], starts=[0], ls=None, bs=None, data_from="cls"
             , cls_start=0, cls_end=1, patch_start=1, patch_end=None
             , reshape=False, mean = True):
     # attentions : L * (B, H, h, w), gradients : L * (B, H, h, w)
-    device = attentions[0].device
     if type(discard_ratios) is not list: discard_ratios = [discard_ratios]
-
-    attentions = torch.stack(attentions, dim=0) # (L, B, H, w, h)
-    if gradients: attentions = attentions * torch.stack(gradients, dim=0) # (L, B, H, w, h)
+    # (L, B, H, w, h)
+    attentions = torch.stack(attentions, dim=0) if attentions else 1
+    gradients = torch.stack(gradients, dim=0) if gradients else 1
+    attentions = attentions * gradients
+    device = attentions.device
 
     if head_fusion == "mean":
         attentions = attentions.mean(axis=2) #

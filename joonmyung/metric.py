@@ -7,10 +7,10 @@ import datetime
 import torch
 import time
 
-def thop(model, size):
-    input = torch.randn(size)
+def thop(model, size, device="cuda"):
+    input = torch.randn(size, device=device)
     macs, params = profile(model, inputs=(input,))
-    return macs, params
+    return macs / 1000000000, params / 1000000
 
 def numel(model):
     return sum([p.numel() for p in model.parameters() if p.requires_grad]) / 1000000

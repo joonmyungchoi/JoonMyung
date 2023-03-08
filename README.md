@@ -15,6 +15,10 @@ JoonMyung Choi's Package
 
 # 3. Previous
 ## Version 1.3.2
+1. joonmyung/Logger
+ - [X] wandb_id 작업
+
+## Version 1.3.2
 1. joonmyung/Script
  - [X] Multi-GPU 적용
 2joonmyung/draw
