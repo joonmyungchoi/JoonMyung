@@ -4,11 +4,9 @@ import subprocess
 import time
 import pynvml
 
-
-
 class GPU_Worker():
     def __init__(self, gpus = [], waitTimeInit = 30, waitTime = 60,
-                 checkType = 0, need_gpu=1, reversed=False, p = True):
+                 checkType = 0, utilRatio = 50, need_gpu=1, reversed=False, p = True):
         self.activate  = False
         self.gpus      = gpus
         self.waitTimeInit = waitTimeInit
@@ -17,9 +15,17 @@ class GPU_Worker():
         self.need_gpu = int(need_gpu)
 
         self.reversed  = reversed
+        self.utilRatio = utilRatio
         self.p = p
 
         self.availGPUs = []
+
+    def getFreeRatio(self, id):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(id)
+        use = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        # ratio = 0.5 * (float(use.gpu + float(use.memory)))
+        ratio = float(use.memory)
+        return ratio
 
     def setGPU(self):
         if self.activate: time.sleep(self.waitTimeInit)
@@ -37,13 +43,9 @@ class GPU_Worker():
                 if self.checkType == 0 and len(pynvml.nvmlDeviceGetComputeRunningProcesses(handle)) == 0:
                     availGPUs.append(str(gpu))
 
-                # # 2. 70% 이하를 사용하는 경우
-                # elif self.checkType == 1 and self.getFreeRatio(gpu) < 70:
-                #     availGPUs.append(gpu)
-
-
-            # for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-            #     result[gpu] = [proc.pid, proc.usedGpuMemory]
+                # 2. n% 이하를 사용하고 있는 경우
+                elif self.checkType == 1 and self.getFreeRatio(gpu) < self.utilRatio:
+                    availGPUs.append(gpu)
 
             if len(availGPUs) < self.need_gpu:
                 if self.p: print("{} : Wait for finish".format(count))
