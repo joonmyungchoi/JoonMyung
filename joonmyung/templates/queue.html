@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Process Queue</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f2f2f2;
+        margin: 0;
+      }
+
+      h1 {
+        text-align: center;
+        padding: 2rem 0;
+        margin: 0;
+        background-color: #4CAF50;
+        color: #fff;
+      }
+
+      table {
+        width: 80%;
+        margin: 0 auto;
+        background-color: #fff;
+        border-collapse: collapse;
+        box-shadow: 0px 0px 5px 0px rgba(0, 0, 0, 0.3);
+      }
+
+      th {
+        background-color: #4CAF50;
+        color: #fff;
+        text-align: left;
+        padding: 1rem;
+      }
+
+      td {
+        padding: 1rem;
+        border-bottom: 1px solid #ddd;
+      }
+
+      form {
+        display: flex;
+        flex-direction: column;
+        width: 50%;
+        margin: 0 auto;
+      }
+
+      label {
+        margin-bottom: 0.5rem;
+      }
+
+      input[type="text"],
+      input[type="number"] {
+        padding: 0.5rem;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        margin-bottom: 1rem;
+      }
+
+      button[type="submit"] {
+        padding: 0.5rem;
+        border-radius: 4px;
+        background-color: #4CAF50;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+
+      button[type="submit"]:hover {
+        background-color: #3e8e41;
+      }
+
+      a {
+        display: block;
+        margin-top: 2rem;
+        text-align: center;
+        color: #4CAF50;
+        text-decoration: none;
+      }
+
+      p {
+        text-align: center;
+        margin-top: 2rem;
+        font-size: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Process Queue</h1>
+    {% if items %}
+    <table>
+      <thead>
+        <tr>
+          <th>Process</th>
+          <th>Priority</th>
+          <th>Process Index</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for priority, process, pidx in items %}
+        <tr>
+          <td>{{ process }}</td>
+          <td>{{ priority }}</td>
+          <td>{{ pidx }}</td>
+          <td>
+            <form method="POST" action="/remove" style="display: inline-block;">
+              <input type="hidden" name="process_to_remove" value="{{ pidx }}">
+              <button type="submit">Remove</button>
+            </form>
+            <form method="POST" action="/change_priority" style="display: inline-block;">
+              <input type="hidden" name="process_to_change" value="{{ pidx }}">
+              <label for="new_priority">New priority:</label>
+              <input type="number" id="new_priority" name="new_priority" required>
+              <button type="submit">Change priority</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>Queue is empty</p>
+    {% endif %}
+  </body>
+</html>
