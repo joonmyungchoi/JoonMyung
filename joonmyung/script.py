@@ -5,8 +5,8 @@ import time
 import pynvml
 
 class GPU_Worker():
-    def __init__(self, gpus = [], waitTimeInit = 30, waitTime = 60,
-                 checkType = 0, utilRatio = 50, need_gpu=1, reversed=False, p = True):
+    def __init__(self, gpus = [], waitTimeInit = 30, waitTime = 60, count = 0,
+                 checkType:int = 0, utilRatio:int = 50, need_gpu=1, reversed=False, p = True):
         self.activate  = False
         self.gpus      = gpus
         self.waitTimeInit = waitTimeInit
@@ -17,35 +17,37 @@ class GPU_Worker():
         self.reversed  = reversed
         self.utilRatio = utilRatio
         self.p = p
+        self.count = count
 
         self.availGPUs = []
 
     def getFreeRatio(self, id):
         handle = pynvml.nvmlDeviceGetHandleByIndex(id)
         use = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        # ratio = 0.5 * (float(use.gpu + float(use.memory)))
-        ratio = float(use.memory)
+        ratio = 0.5 * (float(use.gpu + float(use.memory)))
+        # ratio = float(use.memory)
+        # ratio = float(use.gpu)
         return ratio
 
     def setGPU(self):
         if self.activate: time.sleep(self.waitTimeInit)
         else: self.activate = True
 
-        count = 0
+        count = self.count
         pynvml.nvmlInit()
         while True:
             availGPUs = []
             count += 1
             for gpu in self.gpus:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(gpu)
+                handle = pynvml.nvmlDeviceGetHandleByIndex(int(gpu))
 
                 # 1. 아무것도 돌지 않는 경우
                 if self.checkType == 0 and len(pynvml.nvmlDeviceGetComputeRunningProcesses(handle)) == 0:
                     availGPUs.append(str(gpu))
 
                 # 2. n% 이하를 사용하고 있는 경우
-                elif self.checkType == 1 and self.getFreeRatio(gpu) < self.utilRatio:
-                    availGPUs.append(gpu)
+                elif self.checkType == 1 and self.getFreeRatio(int(gpu)) < self.utilRatio:
+                    availGPUs.append(str(gpu))
 
             if len(availGPUs) < self.need_gpu:
                 if self.p: print("{} : Wait for finish".format(count))
@@ -83,5 +85,5 @@ def Process_Worker(processes, gpuWorker, p = True):
 if __name__ == '__main__':
     # Wokring Sample
     processes = [1,2,3,4,5]
-    gpuWorker = GPU_Worker([0,1,2,3,4,5,6,7], 30, 120, need_gpu=4)
+    gpuWorker = GPU_Worker([0,1,2,3], 30, 120, checkType=1, utilRatio=50, need_gpu=4)
     Process_Worker(processes, gpuWorker)

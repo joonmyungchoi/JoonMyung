@@ -42,18 +42,20 @@ class AverageMeter:
 class Logger():
     loggers = {}
     def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None
-                 , wandb_watch=False, main_process=True, wandb_id=None
-                 , args=None, model=False
-                 , save=True):
+                 , wandb_watch=False, main_process=True, wandb_id=None, wandb_dir='./'
+                 , args=None, model=False):
         self.use_wandb = use_wandb and main_process
 
         if self.use_wandb:
-            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name, resume="allow",
-                       config=args, id = wandb_id)
+            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name
+                       , save_code=True, resume="allow", id = wandb_id, dir=wandb_dir
+                       , config=args, settings=wandb.Settings(code_dir="."))
 
-            if args: args.wandb_id = wandb.config.id = wandb.run.id
+            if args:
+                args.wandb_id = wandb.config.id = wandb.run.id
+                torch.save(args, os.path.join(wandb.run.dir, "args.pt"))
             if wandb_watch and model: wandb.watch(model, log='all')
-            if save and args: torch.save({'args': args, }, os.path.join(wandb.run.dir, "args.pt"))
+
 
     def getLog(self, k, return_type =None):
         if return_type == "avg":
@@ -91,14 +93,21 @@ class Logger():
         return wandb.run.dir
 
     def logWandb(self):
-        if self.use_wandb:
-            wandb.log({k:v.avg if type(v) == AverageMeter else v for k, v in self.loggers.items()})
+        if self.validation():
+            wandb.log({k: v.avg if type(v) == AverageMeter else v for k, v in self.loggers.items()})
             self.resetLog()
-        else:
-            print("Wandb is not Working Now")
-
+        #
     def finish(self):
         wandb.finish()
+
+    def save(self, file, name):
+        if self.validation():
+            path = os.path.join(wandb.run.dir, f"{name}.pt")
+            torch.save(file, path)
+            wandb.save(path, wandb.run.dir)
+
+    def validation(self):
+        return True if self.use_wandb else False
 
 if __name__ == "__main__":
     from playground.analysis.lib_import import *
@@ -110,14 +119,17 @@ if __name__ == "__main__":
                 [5, 4]]
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
+    model = torch.hub.load('facebookresearch/deit:main', "deit_tiny_patch16_224", pretrained=True)
 
     logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="AAPP",
-                    wandb_watch=False)
+                    wandb_watch=False, wandb_dir="./")
 
     logger.addLog({ "sample A": [0, 4],
                     "sample B": [0, 3],
                     "sample C": [0, 2],
                     "table  B": [2, {"image" :     samples, "prediction": targets}]})
-    logger.logWandb()
 
+
+    logger.save(model.state_dict(), "checkpoint_best.pt")
+    logger.logWandb()
     logger.finish()

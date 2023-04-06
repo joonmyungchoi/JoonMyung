@@ -14,6 +14,12 @@ JoonMyung Choi's Package
 
 
 # 3. Previous
+## Version 1.4.0
+1. joonmyung/app.py
+ - [X] 실험 도중 스크립트 추가 기능
+2. joonmyung/log
+ - [X] 모델, 코드 저장 기능
+
 ## Version 1.3.2
 1. joonmyung/Logger
  - [X] wandb_id 작업
