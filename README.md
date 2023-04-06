@@ -14,6 +14,12 @@ JoonMyung Choi's Package
 
 
 # 3. Previous
+## Version 1.4.1
+1. joonmyung/log
+ - [X] wandb table 저장 오류 수정
+2. joonmyung/utils
+ - [X] str2list 띄어쓰기 오류 수정
+
 ## Version 1.4.0
 1. joonmyung/app.py
  - [X] 실험 도중 스크립트 추가 기능

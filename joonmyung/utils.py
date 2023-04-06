@@ -24,7 +24,7 @@ def to_tensor(vs):
 
 
 def str2list(s):
-    v = ast.literal_eval(s.replace(" ", ",").replace(",,", ","))
+    v = ast.literal_eval(s.replace(" ", ""))
     if type(v) is not list:
         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
     return v

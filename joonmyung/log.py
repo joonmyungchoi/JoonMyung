@@ -72,21 +72,31 @@ class Logger():
     def resetLog(self):
         self.loggers = {k:AverageMeter() if type(v) == AverageMeter else v for k, v in self.loggers.items()}
 
-    def addLog(self, datas:dict, epoch=None, mae_task_type = None, bs = 1):
-        for k, v in datas.items():
-            data_type = v[0]
-            if data_type == 0:  # Values
-                self.loggers[k] = v[1]
-            elif data_type == 1: # AverageMeter
-                if k not in self.loggers.keys():
-                    self.loggers[k] = AverageMeter()
-                self.loggers[k].update(v[1], bs)
-            elif data_type == 2: # Table
-                columns = list(v[1].keys())
-                data_num = len(list(v[1].values())[0])
-                self.loggers[k] = wandb.Table(columns=["epoch", "MTT"] + columns)
-                for idx in range(data_num):
-                    self.loggers[k].add_data(str(epoch), str(mae_task_type), *[wandb.Image(to_np(data2PIL(v[1][k][idx]))) if len(v[1][k].shape) == 4 else to_np(v[1][k])[idx] for k in columns])
+    def addLog(self, datas:dict, epoch=None, bs = 1):
+        if self.validation():
+            for k, v in datas.items():
+                data_type = v[0]
+                if data_type == 0:  # Values
+                    self.loggers[k] = v[1]
+                elif data_type == 1: # AverageMeter
+                    if k not in self.loggers.keys():
+                        self.loggers[k] = AverageMeter()
+                    self.loggers[k].update(v[1], bs)
+                elif data_type == 2: # Table
+                    columns = list(v[1].keys())
+                    data_num = len(list(v[1].values())[0])
+                    self.loggers[k] = wandb.Table(columns=["epoch"] + columns)
+                    for idx in range(data_num):
+                        results = []
+                        for c in columns:
+                            if type(v[1][c]) == torch.Tensor:
+                                result = wandb.Image(to_np(data2PIL(v[1][c][idx]))) if len(v[1][c].shape) == 4 else to_np(v[1][c])[idx]
+                            elif type(v[1][c]) == list:
+                                result = v[1][c][idx]
+                            else:
+                                raise ValueError
+                            results.append(result)
+                        self.loggers[k].add_data(str(epoch), *results)
         return True
 
     def getPath(self):
@@ -108,6 +118,7 @@ class Logger():
 
     def validation(self):
         return True if self.use_wandb else False
+
 
 if __name__ == "__main__":
     from playground.analysis.lib_import import *
