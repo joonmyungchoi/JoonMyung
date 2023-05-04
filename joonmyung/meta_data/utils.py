@@ -34,7 +34,7 @@ def data2path(server, dataset,
             data_path = os.path.join(data_path, "imagenet")
 
 
-    output_dir = os.path.join(output_dir, conference, wandb_version, wandb_name) if conference else os.path.join(output_dir, "ETC")
+    output_dir = os.path.join(output_dir, conference, wandb_version, wandb_name) if conference else None
 
 
     return data_path, output_dir

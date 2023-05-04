@@ -21,7 +21,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
                 linecolor=None, linewidths=0.1, fontsize=30, r=[1,1],
                 cmap="Greys", cbar=True, l=0, border=False,
-                output_dir=None, file_name=None, show=True):
+                output_dir='./result', file_name=None, show=True):
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
 
@@ -159,6 +159,7 @@ def rollout(attentions=None, gradients=None, head_fusion="mean", discard_ratios 
     gradients = torch.stack(gradients, dim=0) if gradients else 1
     attentions = attentions * gradients
     device = attentions.device
+    results_s, results_l = torch.empty(0, device=device), torch.empty(0, device=device)
 
     if head_fusion == "mean":
         attentions = attentions.mean(axis=2) #
@@ -168,8 +169,6 @@ def rollout(attentions=None, gradients=None, head_fusion="mean", discard_ratios 
         attentions = attentions.min(axis=2)[0]
     elif head_fusion == "median":
         attentions = attentions.median(axis=2)[0]
-    else:
-        raise "Attention head fusion type Not supported"
 
     if bs is not None:
         attentions = attentions[:, bs]
@@ -198,11 +197,10 @@ def rollout(attentions=None, gradients=None, head_fusion="mean", discard_ratios 
                     result = result.mean(dim=1) if mean else result
                 result = result / result.max(dim=-1, keepdim=True)[0]
                 results.append(result)
-        results = torch.stack(results, dim=0)
+        results_s = torch.stack(results, dim=0)
 
-    if ls is not None:
-        results = attentions[ls, :, cls_start:cls_end, patch_start:patch_end] if data_from == "cls" else attentions[ls, :, patch_start:patch_end, patch_start:patch_end].mean(dim=2)
-
+    if ls is not None: results_l = attentions[ls, :, cls_start:cls_end, patch_start:patch_end].mean(dim=2) if data_from == "cls" else attentions[ls, :, patch_start:patch_end, patch_start:patch_end].mean(dim=2)
+    results = torch.cat([results_l, results_s], dim=0)
     return results.reshape(-1, B, H, W) if reshape else results
 
 def data2PIL(datas):
@@ -228,7 +226,7 @@ def data2PIL(datas):
     return pils
 
 def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
-    output_dir=None, file_name=None, show=True, p=False):
+    output_dir=None, file_name=None, show=True, fmt=1, p=False):
     if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
 
     if showRows is not None:
@@ -245,12 +243,14 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
         dr_num, dc_num = i // len(datas), i % len(datas)
         data = data2PIL(datas[dc_num][dr_num])
         ax = axes[r_num][c_num]
-        if "shape" not in dir(data):
+        if "shape" not in dir(data): # IMAGE
             ax.imshow(data)
-        elif data.shape[-1] == 3:
+        elif data.shape[-1] == 3: #
             ax.imshow(data)
-        elif data.shape[-1] == 1:
-            ax.imshow(data, cmap="gray")
+        elif data.shape[-1] == 1: #
+            # ax.imshow(data, cmap="gray")
+            sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
+                        , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
         if columns:
             ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
 
@@ -295,7 +295,7 @@ def overlay(imgs, attnsL, dataset=None):
     return results
 
 import copy
-def unNormalize(image, dataset):
+def unNormalize(image, dataset="imagenet"):
     # images : (B, C, H, W)
     if dataset == "imagenet":
         mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
