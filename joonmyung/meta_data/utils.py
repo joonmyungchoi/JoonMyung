@@ -13,8 +13,8 @@ def data2path(server, dataset,
         data_path = "/data/opensets/imagenet-pytorch"
         output_dir = "/data/project/rw/joonmyung/conference"
     elif server in ["148", "137", "151", "152", "113", "68", "67", "64"]:
-        data_path = "/hub_data/joonmyung/data"
-        output_dir = "/hub_data/joonmyung/conference"
+        data_path = "/hub_data1/joonmyung/data"
+        output_dir = "/hub_data1/joonmyung/conference"
     elif server in ["154"]:
         data_path = "/data1/joonmyung/data"
         output_dir = "/data1/joonmyung/conference"
