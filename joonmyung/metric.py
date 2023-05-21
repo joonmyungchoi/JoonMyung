@@ -1,6 +1,7 @@
 from fvcore.nn import FlopCountAnalysis, flop_count_table, flop_count_str
 from joonmyung.utils import is_dist_avail_and_initialized
 from collections import defaultdict, deque
+from torchprofile import profile_macs
 import torch.distributed as dist
 from thop import profile
 import datetime
@@ -23,6 +24,13 @@ def flops(model, inputs, p=1):
         print(flop_count_str(flops))
     return flops.total(), flops.by_operator(), flops.by_module(), flops.by_module_and_operator()
 
+def get_macs(model, x=None):
+    model.eval()
+    if x is None:
+        img_size = model.img_size
+        x = torch.rand(1, 3, *img_size).cuda()
+    macs = profile_macs(model, x)
+    return macs
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
