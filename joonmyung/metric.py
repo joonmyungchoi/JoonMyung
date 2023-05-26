@@ -1,182 +1,121 @@
 from fvcore.nn import FlopCountAnalysis, flop_count_table, flop_count_str
-from joonmyung.utils import is_dist_avail_and_initialized
-from collections import defaultdict, deque
 from torchprofile import profile_macs
-import torch.distributed as dist
+from typing import Tuple
 from thop import profile
-import datetime
+from tqdm import tqdm
 import torch
 import time
 
-def thop(model, size, device="cuda"):
+def thop(model, size, *kwargs,
+         round_num=1, eval = True, device="cuda"):
+    if eval: model.eval().to(device)
     input = torch.randn(size, device=device)
-    macs, params = profile(model, inputs=(input,))
-    return macs / 1000000000, params / 1000000
+    macs, params = profile(model, inputs=(input, *kwargs))
+    macs, params = macs / 1000000000, params / 1000000
 
-def numel(model):
-    return sum([p.numel() for p in model.parameters() if p.requires_grad]) / 1000000
+    print(f"thop macs/params : {macs}/{params}")
 
-def flops(model, inputs, p=1):
-    flops = FlopCountAnalysis(model, inputs)
-    if p == 1:
-        print(flop_count_table(flops))
-    elif p == 2:
-        print(flop_count_str(flops))
-    return flops.total(), flops.by_operator(), flops.by_module(), flops.by_module_and_operator()
+    return round(macs, round_num), round(params, round_num)
 
-def get_macs(model, x=None):
-    model.eval()
-    if x is None:
-        img_size = model.img_size
-        x = torch.rand(1, 3, *img_size).cuda()
-    macs = profile_macs(model, x)
-    return macs
+def numel(model,
+          round_num=1):
+    params = sum([p.numel() for p in model.parameters() if p.requires_grad]) / 1000000
+    print(f"numel params : {params}")
+    return round(params, round_num)
 
-class SmoothedValue(object):
-    """Track a series of values and provide access to smoothed values over a
-    window or the global series average.
+def flops(model, size, *kwargs,
+          round_num=1, eval = True, device="cuda"):
+    if eval: model.eval()
+    inputs = torch.randn(size, device=device, requires_grad=True)
+    flops  = FlopCountAnalysis(model, (inputs, *kwargs))
+    flops_num = flops.total() / 1000000000
+
+    print(flop_count_table(flops))
+    # print(flop_count_str(flops))
+    print(f"fvcore flops : {flops_num}")
+
+    return round(flops_num, round_num)
+
+
+def get_macs(model, size,
+             eval = True, round_num=1, device="cuda"):
+    if eval: model.eval()
+    inputs = torch.randn(size, device=device, requires_grad=True)
+    macs = profile_macs(model, inputs)
+    print(f"torchprofile MACS : {macs}")
+
+    return round(macs, round_num)
+
+def benchmark(
+    model: torch.nn.Module,
+    device: torch.device = 0,
+    input_size: Tuple[int] = (3, 224, 224),
+    batch_size: int = 1024,
+    runs: int = 40,
+    throw_out: float = 0.25,
+    use_fp16: bool = False,
+    verbose: bool = False,
+    **kwargs
+) -> float:
+    """
+    Benchmark the given model with random inputs at the given batch size.
+
+    Args:
+     - model: the module to benchmark
+     - device: the device to use for benchmarking
+     - input_size: the input size to pass to the model (channels, h, w)
+     - batch_size: the batch size to use for evaluation
+     - runs: the number of total runs to do
+     - throw_out: the percentage of runs to throw out at the start of testing
+     - use_fp16: whether or not to benchmark with float16 and autocast
+     - verbose: whether or not to use tqdm to print progress / print throughput at end
+
+    Returns:
+     - the throughput measured in images / second
     """
 
-    def __init__(self, window_size=20, fmt=None):
-        if fmt is None:
-            fmt = "{median:.4f} ({global_avg:.4f})"
-        self.deque = deque(maxlen=window_size)
-        self.total = 0.0
-        self.count = 0
-        self.fmt = fmt
+    if not isinstance(device, torch.device):
+        device = torch.device(device)
+    is_cuda = torch.device(device).type == "cuda"
 
-    def update(self, value, n=1):
-        self.deque.append(value)
-        self.count += n
-        self.total += value * n
+    model = model.eval().to(device)
+    input = torch.rand(batch_size, *input_size, device=device)
+    if use_fp16:
+        input = input.half()
 
-    def synchronize_between_processes(self):
-        """
-        Warning: does not synchronize the deque!
-        """
-        if not is_dist_avail_and_initialized():
-            return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
-        dist.barrier()
-        dist.all_reduce(t)
-        t = t.tolist()
-        self.count = int(t[0])
-        self.total = t[1]
+    warm_up = int(runs * throw_out)
+    total = 0
+    start = time.time()
 
-    @property
-    def median(self):
-        d = torch.tensor(list(self.deque))
-        return d.median().item()
+    with torch.autocast(device.type, enabled=use_fp16):
+        with torch.no_grad():
+            for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):
+                if i == warm_up:
+                    if is_cuda:
+                        torch.cuda.synchronize()
+                    total = 0
+                    start = time.time()
 
-    @property
-    def avg(self):
-        d = torch.tensor(list(self.deque), dtype=torch.float32)
-        return d.mean().item()
-
-    @property
-    def global_avg(self):
-        return self.total / self.count
-
-    @property
-    def max(self):
-        return max(self.deque)
-
-    @property
-    def value(self):
-        return self.deque[-1]
-
-    def __str__(self):
-        return self.fmt.format(
-            median=self.median,
-            avg=self.avg,
-            global_avg=self.global_avg,
-            max=self.max,
-            value=self.value)
+                model(input, **kwargs)
+                total += batch_size
 
 
-class MetricLogger(object):
-    def __init__(self, delimiter="\t"):
-        self.meters = defaultdict(SmoothedValue)
-        self.delimiter = delimiter
+    if is_cuda:
+        torch.cuda.synchronize()
 
-    def update(self, **kwargs):
-        for k, v in kwargs.items():
-            if isinstance(v, torch.Tensor):
-                v = v.item()
-            assert isinstance(v, (float, int))
-            self.meters[k].update(v)
+    end = time.time()
+    elapsed = end - start
 
-    def __getattr__(self, attr):
-        if attr in self.meters:
-            return self.meters[attr]
-        if attr in self.__dict__:
-            return self.__dict__[attr]
-        raise AttributeError("'{}' object has no attribute '{}'".format(
-            type(self).__name__, attr))
+    throughput = total / elapsed
 
-    def __str__(self):
-        loss_str = []
-        for name, meter in self.meters.items():
-            loss_str.append(
-                "{}: {}".format(name, str(meter))
-            )
-        return self.delimiter.join(loss_str)
+    if verbose:
+        print(f"Throughput: {throughput:.2f} im/s")
 
-    def synchronize_between_processes(self):
-        for meter in self.meters.values():
-            meter.synchronize_between_processes()
-
-    def add_meter(self, name, meter):
-        self.meters[name] = meter
-
-    def log_every(self, iterable, print_freq, header=None):
-        i = 0
-        if not header:
-            header = ''
-        start_time = time.time()
-        end = time.time()
-        iter_time = SmoothedValue(fmt='{avg:.4f}')
-        data_time = SmoothedValue(fmt='{avg:.4f}')
-        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
-        log_msg = [
-            header,
-            '[{0' + space_fmt + '}/{1}]',
-            'eta: {eta}',
-            '{meters}',
-            'time: {time}',
-            'data: {data}'
-        ]
-        if torch.cuda.is_available():
-            log_msg.append('max mem: {memory:.0f}')
-        log_msg = self.delimiter.join(log_msg)
-        MB = 1024.0 * 1024.0
-        for obj in iterable:
-            data_time.update(time.time() - end)
-            yield obj
-            iter_time.update(time.time() - end)
-            if i % print_freq == 0 or i == len(iterable) - 1:
-                eta_seconds = iter_time.global_avg * (len(iterable) - i)
-                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
-                if torch.cuda.is_available():
-                    print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time),
-                        memory=torch.cuda.max_memory_allocated() / MB))
-                else:
-                    print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time)))
-            i += 1
-            end = time.time()
-        total_time = time.time() - start_time
-        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print('{} Total time: {} ({:.4f} s / it)'.format(
-            header, total_time_str, total_time / len(iterable)))
+    return round(throughput)
 
 
-def accuracy(output, target, topk=(1,), ana=True):
+
+def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     maxk = max(topk)
     _, pred = output.topk(maxk, 1, True, True)

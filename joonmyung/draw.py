@@ -226,7 +226,9 @@ def data2PIL(datas):
     return pils
 
 def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
-    output_dir=None, file_name=None, show=True, fmt=1, p=False):
+                output_dir='./', save_name=None, show=True, fmt=1,
+                vis_x = False, vis_y = False,
+                p=False):
     if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
 
     if showRows is not None:
@@ -251,17 +253,18 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
             # ax.imshow(data, cmap="gray")
             sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
                         , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
+
         if columns:
             ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
-
-    plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
+        if not vis_x: ax.xaxis.set_visible(False)
+        if not vis_x: ax.yaxis.set_visible(False)
     plt.tight_layout()
 
 
-    if output_dir and file_name:
+    if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-        plt.savefig(os.path.join(output_dir, file_name))
+        plt.savefig(os.path.join(output_dir, f'{save_name}.png'))
     if show:
         plt.show()
 

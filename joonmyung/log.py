@@ -1,9 +1,13 @@
+from joonmyung.utils import is_dist_avail_and_initialized
+from collections import defaultdict, deque
 from joonmyung.draw import data2PIL
 from joonmyung.utils import to_np
+import torch.distributed as dist
+import datetime
 import wandb
 import torch
+import time
 import os
-import re
 
 class AverageMeter:
     ''' Computes and stores the average and current value. '''
@@ -39,14 +43,17 @@ class AverageMeter:
               f'acc {avg_score.val:.4f} ({avg_score.avg:.4f})')"
 
 
+
+
 class Logger():
     loggers = {}
     def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None
                  , wandb_watch=False, main_process=True, wandb_id=None, wandb_dir='./'
                  , args=None, model=False):
-        self.use_wandb = use_wandb and main_process
+        self.use_wandb = use_wandb
+        self.main_process = main_process
 
-        if self.use_wandb:
+        if self.use_wandb and self.main_process:
             wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name
                        , save_code=True, resume="allow", id = wandb_id, dir=wandb_dir
                        , config=args, settings=wandb.Settings(code_dir="."))
@@ -73,7 +80,7 @@ class Logger():
         self.loggers = {k:AverageMeter() if type(v) == AverageMeter else v for k, v in self.loggers.items()}
 
     def addLog(self, datas:dict, epoch=None, bs = 1):
-        if self.validation():
+        if self.main_process and self.use_wandb:
             for k, v in datas.items():
                 data_type = v[0]
                 if data_type == 0:  # Values
@@ -103,44 +110,186 @@ class Logger():
         return wandb.run.dir
 
     def logWandb(self):
-        if self.validation():
+        if self.main_process and self.use_wandb:
             wandb.log({k: v.avg if type(v) == AverageMeter else v for k, v in self.loggers.items()})
             self.resetLog()
-        #
+
     def finish(self):
         wandb.finish()
 
-    def save(self, file, name):
-        if self.validation():
-            path = os.path.join(wandb.run.dir, f"{name}.pt")
-            torch.save(file, path)
+    def save(self, model, args, name):
+        if self.main_process:
+            path = os.path.join(wandb.run.dir, f"{name}.pth")
+            torch.save({"model" : model, "args"  : args}, path)
             wandb.save(path, wandb.run.dir)
 
-    def validation(self):
-        return True if self.use_wandb else False
+
+class SmoothedValue(object):
+    """Track a series of values and provide access to smoothed values over a
+    window or the global series average.
+    """
+
+    def __init__(self, window_size=20, fmt=None):
+        if fmt is None:
+            fmt = "{median:.4f} ({global_avg:.4f})"
+        self.deque = deque(maxlen=window_size)
+        self.total = 0.0
+        self.count = 0
+        self.fmt = fmt
+
+    def update(self, value, n=1):
+        self.deque.append(value)
+        self.count += n
+        self.total += value * n
+
+    def synchronize_between_processes(self):
+        """
+        Warning: does not synchronize the deque!
+        """
+        if not is_dist_avail_and_initialized():
+            return
+        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
+        dist.barrier()
+        dist.all_reduce(t)
+        t = t.tolist()
+        self.count = int(t[0])
+        self.total = t[1]
+
+    @property
+    def median(self):
+        d = torch.tensor(list(self.deque))
+        return d.median().item()
+
+    @property
+    def avg(self):
+        d = torch.tensor(list(self.deque), dtype=torch.float32)
+        return d.mean().item()
+
+    @property
+    def global_avg(self):
+        return self.total / self.count
+
+    @property
+    def max(self):
+        return max(self.deque)
+
+    @property
+    def value(self):
+        return self.deque[-1]
+
+    def __str__(self):
+        return self.fmt.format(
+            median=self.median,
+            avg=self.avg,
+            global_avg=self.global_avg,
+            max=self.max,
+            value=self.value)
 
 
-if __name__ == "__main__":
-    from playground.analysis.lib_import import *
-    dataset_name, server, device = "imagenet", "148", "cuda"
-    data_path, _ = data2path(server, dataset_name)
-    data_num = [[5, 1],
-                [5, 2],
-                [5, 3],
-                [5, 4]]
-    dataset = JDataset(data_path, dataset_name, device=device)
-    samples, targets, imgs, label_names = dataset.getItems(data_num)
-    model = torch.hub.load('facebookresearch/deit:main', "deit_tiny_patch16_224", pretrained=True)
+class MetricLogger(object):
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
 
-    logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="AAPP",
-                    wandb_watch=False, wandb_dir="./")
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            assert isinstance(v, (float, int))
+            self.meters[k].update(v)
 
-    logger.addLog({ "sample A": [0, 4],
-                    "sample B": [0, 3],
-                    "sample C": [0, 2],
-                    "table  B": [2, {"image" :     samples, "prediction": targets}]})
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError("'{}' object has no attribute '{}'".format(
+            type(self).__name__, attr))
+
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(
+                "{}: {}".format(name, str(meter))
+            )
+        return self.delimiter.join(loss_str)
+
+    def synchronize_between_processes(self):
+        for meter in self.meters.values():
+            meter.synchronize_between_processes()
+
+    def add_meter(self, name, meter):
+        self.meters[name] = meter
+
+    def log_every(self, iterable, print_freq, header=None):
+        i = 0
+        if not header:
+            header = ''
+        start_time = time.time()
+        end = time.time()
+        iter_time = SmoothedValue(fmt='{avg:.4f}')
+        data_time = SmoothedValue(fmt='{avg:.4f}')
+        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
+        log_msg = [
+            header,
+            '[{0' + space_fmt + '}/{1}]',
+            'eta: {eta}',
+            '{meters}',
+            'time: {time}',
+            'data: {data}'
+        ]
+        if torch.cuda.is_available():
+            log_msg.append('max mem: {memory:.0f}')
+        log_msg = self.delimiter.join(log_msg)
+        MB = 1024.0 * 1024.0
+        for obj in iterable:
+            data_time.update(time.time() - end)
+            yield obj
+            iter_time.update(time.time() - end)
+            if i % print_freq == 0 or i == len(iterable) - 1:
+                eta_seconds = iter_time.global_avg * (len(iterable) - i)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if torch.cuda.is_available():
+                    print(log_msg.format(
+                        i, len(iterable), eta=eta_string,
+                        meters=str(self),
+                        time=str(iter_time), data=str(data_time),
+                        memory=torch.cuda.max_memory_allocated() / MB))
+                else:
+                    print(log_msg.format(
+                        i, len(iterable), eta=eta_string,
+                        meters=str(self),
+                        time=str(iter_time), data=str(data_time)))
+            i += 1
+            end = time.time()
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print('{} Total time: {} ({:.4f} s / it)'.format(
+            header, total_time_str, total_time / len(iterable)))
 
 
-    logger.save(model.state_dict(), "checkpoint_best.pt")
-    logger.logWandb()
-    logger.finish()
+
+# if __name__ == "__main__":
+#     from playground.analysis.lib_import import *
+#     dataset_name, server, device = "imagenet", "148", "cuda"
+#     data_path, _ = data2path(server, dataset_name)
+#     data_num = [[5, 1],
+#                 [5, 2],
+#                 [5, 3],
+#                 [5, 4]]
+#     dataset = JDataset(data_path, dataset_name, device=device)
+#     samples, targets, imgs, label_names = dataset.getItems(data_num)
+#     model = torch.hub.load('facebookresearch/deit:main', "deit_tiny_patch16_224", pretrained=True)
+#
+#     logger = Logger(use_wandb=True, wandb_entity="joonmyung", wandb_project="test", wandb_name="AAPP",
+#                     wandb_watch=False, wandb_dir="./")
+#
+#     logger.addLog({ "sample A": [0, 4],
+#                     "sample B": [0, 3],
+#                     "sample C": [0, 2],
+#                     "table  B": [2, {"image" :     samples, "prediction": targets}]})
+#
+#
+#     logger.save(model.state_dict(), "checkpoint_best.pt")
+#     logger.logWandb()
+#     logger.finish()

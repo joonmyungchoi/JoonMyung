@@ -13,12 +13,13 @@ class JDataset():
     distributions = {"imagenet": {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
                         "cifar": {"mean": [0.4914, 0.4822, 0.4465], "std": [0.2023, 0.1994, 0.2010]}}
     transform_cifar    = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["cifar"]["mean"], distributions["cifar"]["std"])])
-    # transform_imagenet = transforms.Compose([transforms.Resize(256), transforms.CenterCrop(224), transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
-    transform_imagenet = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
+    transform_imagenet_ = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
+    # transform_imagenet_vis = transforms.Compose([transforms.Resize(256, interpolation=3), transforms.CenterCrop(224)])
+    transform_imagenet_vis = transforms.Compose([transforms.Resize((224, 224), interpolation=3)])
+    transform_imagenet_norm = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
 
-
-
-    transforms = {"imagenet" : transform_imagenet, "cifar" : transform_cifar}
+    # transforms.Resize(int((256 / 224) * input_size), interpolation=InterpolationMode.BICUBIC),
+    transforms = {"imagenet" : [transform_imagenet_vis, transform_imagenet_norm], "cifar" : transform_cifar}
 
     # CIFAR Setting
     # pip install cifar2png
@@ -39,7 +40,7 @@ class JDataset():
             result[:, c].sub_(m).div_(s)
         return result
 
-    def __init__(self, data_path="/hub_data/joonmyung/data", dataset="imagenet", device="cuda"):
+    def __init__(self, data_path="/hub_data1/joonmyung/data", dataset="imagenet", device="cuda"):
         dataset = dataset.lower()
 
         self.d      = dataset.lower()
@@ -54,14 +55,15 @@ class JDataset():
         self.label_paths = sorted(getDir(os.path.join(self.data_path, self.d_type)))
         self.img_paths = [sorted(glob.glob(os.path.join(self.data_path, self.d_type, label_path, "*"))) for label_path in self.label_paths]
 
-    def __getitem__(self, index=[0,0]):
-        label_num, img_num= index
+    def __getitem__(self, index):
+        label_num, img_num = index
         img_path = self.img_paths[label_num][img_num]
-        img = PIL.Image.open(img_path).resize((224, 224))
-        data = self.transform(img)
+        img = PIL.Image.open(img_path)
 
+        img = self.transform[0](img)
+        data = self.transform[1](img)
         return data.unsqueeze(0).to(self.device), torch.tensor(label_num).to(self.device), \
-                    img, self.label_name[label_num]
+                    img, self.label_name[int(label_num)]
     def getItems(self, indexs):
         ds, ls, ies, lns = [], [], [], []
         for index in indexs:
@@ -95,11 +97,9 @@ class JDataset():
             tf_preprocessing=False)
         return loader
 
-if __name__ == "__main__":
-    root_path = "/hub_data/joonmyung/data"
-    dataset = "cifar100"
-    dataset = JDataset(root_path, dataset)
-    # sample  = dataset[0, 1]
-    samples = dataset.getitems([[0,1], [0,2], [0,3]])
-
-
+# if __name__ == "__main__":
+#     root_path = "/hub_data1/joonmyung/data"
+#     dataset = "cifar100"
+#     dataset = JDataset(root_path, dataset)
+#     # sample  = dataset[0, 1]
+#     samples = dataset.getitems([[0,1], [0,2], [0,3]])
