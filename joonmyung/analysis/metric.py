@@ -1,6 +1,7 @@
 import torch
 
-from joonmyung.metric import MetricLogger, accuracy
+from joonmyung.log import MetricLogger
+from joonmyung.metric import accuracy
 
 
 @torch.no_grad()

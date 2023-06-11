@@ -22,7 +22,6 @@ def to_tensor(vs):
     else:
         return torch.Tensor(vs) if type(vs) is not torch.Tensor else vs
 
-
 def str2list(s):
     v = ast.literal_eval(s.replace(" ", ""))
     if type(v) is not list:

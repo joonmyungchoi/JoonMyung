@@ -12,10 +12,9 @@ def data2path(dataset, server = "",
               conference="", wandb_version="", wandb_name="",
               kisti_id=""):
 
-    # server = server if server else
     hostname = socket.gethostname()
     server = server if server is not "" \
-                else server if "mlv" in server \
+                else hostname if "mlv" in hostname \
                     else "kakao" if "dakao" in hostname \
                         else "kisti"
 
@@ -35,7 +34,7 @@ def data2path(dataset, server = "",
         data_path = os.path.join(data_path, "imagenet") if "kakao" not in server else os.path.join(data_path, "imagenet-pytorch")
     output_dir = os.path.join(output_dir, conference, wandb_version, wandb_name)
 
-    return data_path, output_dir
+    return data_path, output_dir, server
 
 def get_label(key, d_name ="imagenet"):
     d_name = d_name.lower()
