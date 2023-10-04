@@ -2,37 +2,35 @@ from joonmyung.meta_data.label import imnet_label, cifar_label
 import torch.nn.functional as F
 import pandas as pd
 import numpy as np
-import torch
 import socket
+import torch
 import os
-
-
 
 def data2path(dataset, server = "",
               conference="", wandb_version="", wandb_name="",
-              kisti_id=""):
+              kisti_id="", hub_num = 1):
 
     hostname = socket.gethostname()
-    server = server if server is not "" \
+    server   = server if server is not "" \
                 else hostname if "mlv" in hostname \
                     else "kakao" if "dakao" in hostname \
                         else "kisti"
 
     if "kakao" in server:
-        data_path = "/data/opensets"
+        data_path  = "/data/opensets"
         output_dir = "/data/project/rw/joonmyung/conference"
     elif "mlv" in server:
-        data_path = "/hub_data1/joonmyung/data"
-        output_dir = "/hub_data1/joonmyung/conference"
+        data_path  = f"/hub_data{hub_num}/joonmyung/data"
+        output_dir = f"/hub_data{hub_num}/joonmyung/conference"
     elif server in ["kisti"]:
-        data_path = f"/scratch/{kisti_id}/data"
+        data_path  = f"/scratch/{kisti_id}/data"
         output_dir = f"/scratch/{kisti_id}/result"
     else:
         raise ValueError
 
     if dataset in ["imagenet", "IMNET"]:
         data_path = os.path.join(data_path, "imagenet") if "kakao" not in server else os.path.join(data_path, "imagenet-pytorch")
-    output_dir = os.path.join(output_dir, conference, wandb_version, wandb_name)
+    output_dir    = os.path.join(output_dir, conference, wandb_version, wandb_name)
 
     return data_path, output_dir, server
 
@@ -44,7 +42,7 @@ def get_label(key, d_name ="imagenet"):
         return cifar_label[key]
 
 
-def makeSample(shape, min=None, max=None, dataType=int, outputType=np, columns=None):
+def makeSample(shape, min=0, max=1, dataType=int, outputType=np):
     if dataType == int:
         d = np.random.randint(min, max, size=shape)
     elif dataType == float:
@@ -67,5 +65,3 @@ def set_dtype(df, dtypes):
         if c_n in df.columns:
             df[c_n] = df[c_n].astype(d_t)
     return df
-
-
