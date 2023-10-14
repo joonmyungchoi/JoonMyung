@@ -6,16 +6,14 @@ import torch
 import os
 
 class JModel():
-    def __init__(self, num_classes = None, root_path= None,
-                 device="cuda", p=False):
+    def __init__(self, num_classes = None, model_path= None, device="cuda", p=False):
         # Pretrained_Model
         self.num_classes = num_classes
 
-        # Other
-        if root_path:
-            self.model_path = os.path.join(root_path, "checkpoint_{}.pth")
-        if p and root_path:
-            print("file list : ", sorted(os.listdir(root_path), reverse=True))
+        if model_path:
+            self.model_path = os.path.join(model_path, "checkpoint_{}.pth")
+        if p and model_path:
+            print("file list : ", sorted(os.listdir(model_path), reverse=True))
         self.device = device
 
     def load_state_dict(self, model, state_dict):

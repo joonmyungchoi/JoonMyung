@@ -2,29 +2,31 @@ from joonmyung.meta_data.label import imnet_label, cifar_label
 import torch.nn.functional as F
 import pandas as pd
 import numpy as np
+import getpass
 import socket
 import torch
 import os
 
 def data2path(dataset, server = "",
-              conference="", wandb_version="", wandb_name="",
-              kisti_id="", hub_num = 1):
+              conference="", wandb_version="", wandb_name="", hub_num = 1):
 
     hostname = socket.gethostname()
-    server   = server if server is not "" \
+    server   = server if server != "" \
                 else hostname if "mlv" in hostname \
                     else "kakao" if "dakao" in hostname \
-                        else "kisti"
-
+                        else "kisti_"+hostname
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+    print(server, " : ", hostname, " : ", getpass.getuser())
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
     if "kakao" in server:
         data_path  = "/data/opensets"
-        output_dir = "/data/project/rw/joonmyung/conference"
+        output_dir = f"/data/project/rw/{getpass.getuser()}/conference"
     elif "mlv" in server:
-        data_path  = f"/hub_data{hub_num}/joonmyung/data"
-        output_dir = f"/hub_data{hub_num}/joonmyung/conference"
-    elif server in ["kisti"]:
-        data_path  = f"/scratch/{kisti_id}/data"
-        output_dir = f"/scratch/{kisti_id}/result"
+        data_path  = f"/hub_data{hub_num}/{getpass.getuser()}/data"
+        output_dir = f"/hub_data{hub_num}/{getpass.getuser()}/conference"
+    elif "kisti" in server:
+        data_path  = f"/scratch/{getpass.getuser()}/data"
+        output_dir = f"/scratch/{getpass.getuser()}/result"
     else:
         raise ValueError
 

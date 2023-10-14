@@ -1,12 +1,13 @@
 from joonmyung.meta_data.label import imnet_label, cifar_label
 from timm.data import create_dataset, create_loader
 from torchvision import transforms
-from joonmyung.utils import getDir
 import torch
 import copy
 import glob
 import PIL
 import os
+
+from joonmyung.utils import getDir
 
 
 class JDataset():
@@ -81,7 +82,7 @@ class JDataset():
         dataset = create_dataset(
             root=self.data_path, name="IMNET" if self.d == "imagenet" else self.d.upper()
             , split='validation', is_training=False
-            , download=False, load_bytes=False, class_map='')
+            , load_bytes=False, class_map='')
 
         loader = create_loader(
             dataset,

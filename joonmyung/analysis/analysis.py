@@ -1,12 +1,16 @@
-from joonmyung.draw import rollout
+from joonmyung.analysis.dataset import JDataset
+from joonmyung.analysis.model import JModel
+from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
+# from joonmyung.analysis import JDataset, JModel
 from joonmyung.meta_data import data2path
 from joonmyung.metric import targetPred
 from joonmyung.log import AverageMeter
+from joonmyung.utils import to_leaf, to_np
 from tqdm import tqdm
 from contextlib import suppress
 import torch.nn.functional as F
 import torch
-from joonmyung.utils import to_leaf
+
 
 
 class Analysis:
@@ -88,14 +92,13 @@ class Analysis:
             return outputs
         else:
             for self.inputs, self.targets in tqdm(samples):
-                # with self.amp_autocast():
-                outputs = self.model(self.inputs)
+                _ = self.model(self.inputs)
             return False
 
-    def anaAttn(self, attn=True, grad=False, output=None, index=None,
-                head_fusion="mean", discard_ratios=[0.9], data_from="cls"
-                , starts=[0], ls=None, bs=None
-                , reshape=False, mean=True):
+    def anaSaliency(self, attn=True, grad=False, output=None, index=None,
+                    head_fusion="mean", discard_ratios=[0.], data_from="cls",
+                    ls_attentive=[], ls_rollout=[],
+                    reshape=False, device="cuda"):
 
         if attn:
             attn = self.info["attn"]["f"]
@@ -108,47 +111,74 @@ class Analysis:
             loss.backward(retain_graph=True)
             grad = self.info["attn"]["b"]
 
-        return rollout(attn, grad
-                       , head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from
-                       , starts=starts, ls=ls, bs=bs
-                       , reshape=reshape, mean=mean)
+        return saliency(attn, grad
+                        , head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from
+                        , ls_rollout=ls_rollout, ls_attentive=ls_attentive, reshape=reshape, device=device)
 
 
 if __name__ == '__main__':
     # Section A. Data
-    dataset_name, server, device, amp_autocast = "imagenet", "148", 'cuda', torch.cuda.amp.autocast
-    data_path, _ = data2path(server, dataset_name)
-    data_num, batch_size = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16
-    # data_num, batch_size = [[3, 0]], 16
-    # test, activate = [False, False, True], [False, False, True]
-    test, activate = [False, True], [True, False, False] # ATTN, QKV, Head
+    dataset_name, device, amp_autocast = "imagenet", 'cuda', torch.cuda.amp.autocast
+    data_path, _, _ = data2path(dataset_name)
+    data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, [0]
+    test, activate = [True, True, False, False], [True, False, False] # ATTN, QKV, Head
 
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
     loader = dataset.getAllItems(batch_size)
 
     # Section B. Model
-    # model_number, model_name = 0, "vit_small_patch16_224"
-    model_number, model_name = 1, "deit_tiny_patch16_224"
-    modelMaker = JModel(model_name, dataset.num_classes, model_number=model_number, device=device)
-    model, args = modelMaker.getModel()
+    model_number, model_name = 0, "deit_tiny_patch16_224" # deit_tiny_patch16_224, deit_small_patch16_224, deit_base_patch16_224
+    # model_number, model_name = 0, "vit_tiny_patch16_224" # vit_tiny_patch16_224,  vit_small_patch16_224,  vit_base_patch16_224
+    # model_number, model_name = 1, "deit_tiny_patch16_224"
+
+    modelMaker = JModel(dataset.num_classes, device=device)
+    model, args = modelMaker.getModel(model_number, model_name)
     model = Analysis(model, activate = activate, device=device)
 
-    bs = [3]
+
     samples_ = samples[bs] if bs else samples
+    targets_ = targets[bs] if bs else targets
+    output = model(samples_)
     if test[0]:
-        ls, starts, col = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], None, 12
-        discard_ratios, head_fusion, data_from = [0.0, 0.9], "mean", "patch"  # Attention, Gradient
-        output = model(samples_)
-        rollout_attn = model.anaAttn(True, False, output,
-                                     ls=ls, starts=starts, discard_ratios=discard_ratios,
-                                     head_fusion = head_fusion, index=targets, data_from=data_from,
-                                     reshape=True)
+        drawImgPlot(unNormalize(samples_, "imagenet"))
+    if test[1]: # Attention
+        ls_rollout, ls_attentive, col = [0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10,11], 12
+        discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
+        rollout, attentive = model.anaSaliency(True, False, output, discard_ratios=discard_ratios,
+                                         ls_attentive=ls_attentive, ls_rollout=ls_rollout,
+                                         head_fusion = head_fusion, index=targets_, data_from=data_from,
+                                         reshape=True)
 
-        datas = overlay(samples_, rollout_attn, dataset_name)
-        drawImgPlot(datas, col=col)
+        datas_rollout = overlay(samples_, rollout, dataset_name)
+        datas_attn = overlay(samples_, attentive, dataset_name)
 
-    if test[1]:
+        print(1)
+        # drawImgPlot(datas_rollout[:12], col=col)
+        # drawImgPlot(datas_rollout[12:24], col=col)
+        # drawHeatmap(rollout[:12, 0], col=col, vmin = rollout.reshape(-1, 196)[:12].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[:12].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[12:24, 0], col=col, vmin = rollout.reshape(-1, 196)[12:24].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[12:24].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[24:, 0], col=col, vmin = rollout.reshape(-1, 196)[24:].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[24:].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[:12, 0], col=col)
+        # drawHeatmap(rollout[12:24, 0], col=col)
+        # drawHeatmap(rollout[24:, 0], col=col)
+
+
+        # drawImgPlot(datas_attn, col=col)
+        # drawHeatmap(attentive[6:, 0], col=col)
+        # drawHeatmap(attentive[:, 0], col=col, vmin=attentive.reshape(-1, 196).quantile(v_ratio, dim=1), vmax=attentive.reshape(-1, 196).quantile(1 - v_ratio, dim=1))
+    if test[2]: # HELLO
+        attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (B, L, T_Q, T_K)
+        cls2cls     = attn[:, :, :1, 0].mean(dim=2)
+        patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1)
+        to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0)]))
+
+        cls2patch   = attn[:, :, 1:, 0].mean(dim=2)
+        patch2patch = attn[:, :, 1:, 1:].mean(dim=2).sum(dim=-1)
+        to_np(torch.stack([cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
+        print(1)
+
+    if test[3]: # Gradient
         samples_.requires_grad, model.detach, k = True, False, 3
         output = model(samples_)
         attn = torch.stack(model.info["attn"]["f"], dim=1).mean(dim=[2,3])[0,-2]
@@ -156,10 +186,6 @@ if __name__ == '__main__':
         # a = torch.autograd.grad(attn.sum(), samples, retain_graph=True)[0].sum(dim=1)
         a = torch.autograd.grad(output[:,3], samples_, retain_graph=True)[0].sum(dim=1)
         b = F.interpolate(a.unsqueeze(0), scale_factor=0.05, mode='nearest')[0]
-        drawHeatmap(b)
+        # drawHeatmap(b)
         print(1)
         # to_np(torch.stack([attn[:, :, 0], attn[:, :, 1:].sum(dim=-1)], -1)[0])
-
-
-    if test[2]:
-        output = model(loader)

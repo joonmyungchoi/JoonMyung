@@ -20,7 +20,7 @@ import os
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
                 linecolor=None, linewidths=0.1, fontsize=30, r=[1,1],
-                cmap="Greys", cbar=True, l=0, border=False,
+                cmap="Greys", cbar=True, border=False,
                 output_dir='./result', file_name=None, show=True):
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
@@ -47,6 +47,8 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         print("    |- cbar        : 오른쪽 바 On/Off")
         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
+    if type(vmin) == float or vmin == None: vmin = [vmin] * len(matrixes)
+    if type(vmax) == float or vmax == None: vmax = [vmax] * len(matrixes)
 
     if title:
         title = title + list(range(len(title), len(matrixes) - len(title)))
@@ -58,7 +60,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
         res = sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
-                          , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
+                          , vmin=vmin[e], vmax=vmax[e], yticklabels=yticklabels, xticklabels=xticklabels
                           , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
                           , ax=ax)
 
@@ -149,59 +151,71 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
     plt.show()
 
 @torch.no_grad()
-def rollout(attentions=None, gradients=None, head_fusion="mean", discard_ratios = [0.1], starts=[0], ls=None, bs=None, data_from="cls"
-            , cls_start=0, cls_end=1, patch_start=1, patch_end=None
-            , reshape=False, mean = True):
+def saliency(attentions=None, gradients=None, head_fusion="mean",
+             discard_ratios = [0.0], data_from="cls", ls_rollout=[], ls_attentive=[],
+             reshape=False, device="cpu"):
     # attentions : L * (B, H, h, w), gradients : L * (B, H, h, w)
     if type(discard_ratios) is not list: discard_ratios = [discard_ratios]
-    # (L, B, H, w, h)
-    attentions = torch.stack(attentions, dim=0) if attentions else 1
-    gradients = torch.stack(gradients, dim=0) if gradients else 1
-    attentions = attentions * gradients
-    device = attentions.device
-    results_s, results_l = torch.empty(0, device=device), torch.empty(0, device=device)
+    saliencys = 1.
+    if attentions:
+        attentions = torch.stack(attentions, dim=0)
+        saliencys = saliencys * attentions
+    if gradients:
+        gradients = torch.stack(gradients, dim=0)
+        saliencys = saliencys * gradients
 
     if head_fusion == "mean":
-        attentions = attentions.mean(axis=2) #
+        saliencys = saliencys.mean(axis=2) #
     elif head_fusion == "max":
-        attentions = attentions.max(axis=2)[0]
+        saliencys = saliencys.max(axis=2)[0]
     elif head_fusion == "min":
-        attentions = attentions.min(axis=2)[0]
+        saliencys = saliencys.min(axis=2)[0]
     elif head_fusion == "median":
-        attentions = attentions.median(axis=2)[0]
+        saliencys = saliencys.median(axis=2)[0]
 
-    if bs is not None:
-        attentions = attentions[:, bs]
+    saliencys = saliencys.to(device)
 
-    _, B, _, T = attentions.shape
+    _, B, _, T = saliencys.shape
     H = W = int(T ** 0.5)
-    if starts is not None:
-        results, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
+
+    rollouts, attentive = None, None
+    if ls_rollout:
+        rollouts, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
         for discard_ratio in discard_ratios:
-            for start in starts:
-                result = I
-                for attn in copy.deepcopy(attentions[start:]):  # (L, B, w, h)
-                    flat = attn.reshape(B, -1)
-                    _, indices = flat.topk(int(flat.shape[-1] * discard_ratio), -1, False)
-                    indices = indices * (indices != 0)
-                    for b in range(B):
-                        flat[b, indices[b]] = 0
+            for start in ls_rollout:
+                rollout = I
+                for attn in copy.deepcopy(saliencys[start:]):  # (L, B, w, h)
+                    # TODO NEED TO CORRECT
+                    if discard_ratio:
+                        flat = attn.reshape(B, -1)
+                        _, indices = flat.topk(int(flat.shape[-1] * discard_ratio), -1, False)
+                        indices = indices * (indices != 0)
+                        for b in range(B):
+                            flat[b, indices[b]] = 0
 
-                    attn = (attn + 1.0 * I) / 2
+                    attn = 0.5 * attn + 0.5 * I
                     attn = attn / attn.sum(dim=-1, keepdim=True)
-                    result = torch.matmul(attn, result)  # (1, 197, 197)
+                    rollout = torch.matmul(attn, rollout)  # (1, 197, 197)
+
+                rollout = rollout[:, 1] if data_from == "cls" else rollout[:, 1:].mean(dim=1) # (L, B, T)
+                rollout = rollout / rollout.max(dim=-1, keepdim=True)[0]
+                rollouts.append(rollout)
+        rollouts = torch.stack(rollouts, dim=0)
+        rollouts = rollouts[:, :, 1:]
+
+        if reshape:
+            rollouts = rollouts.reshape(-1, B, H, W) # L, B, H, W
+
+    if ls_attentive:
+        attentive = saliencys[ls_attentive, :, 1] \
+                if data_from == "cls" else saliencys[ls_attentive, :, 1:].mean(dim=2) # (L, B, T)
+        attentive = attentive[:, :, 1:]
+        if reshape:
+            attentive = attentive.reshape(-1, B, H, W)
+
+    return rollouts, attentive
 
 
-                result = result[:, cls_start:cls_end, patch_start:patch_end] if data_from == "cls" else result[:, patch_start:patch_end, patch_start:patch_end]
-                if mean:
-                    result = result.mean(dim=1) if mean else result
-                result = result / result.max(dim=-1, keepdim=True)[0]
-                results.append(result)
-        results_s = torch.stack(results, dim=0)
-
-    if ls is not None: results_l = attentions[ls, :, cls_start:cls_end, patch_start:patch_end].mean(dim=2) if data_from == "cls" else attentions[ls, :, patch_start:patch_end, patch_start:patch_end].mean(dim=2)
-    results = torch.cat([results_l, results_s], dim=0)
-    return results.reshape(-1, B, H, W) if reshape else results
 
 def data2PIL(datas):
     if type(datas) == torch.Tensor:
@@ -283,8 +297,8 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 def overlay(imgs, attnsL, dataset=None):
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))
-    if type(attnsL) == list:  attnsL = torch.stack(attnsL, 0)
-    if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
+    if type(attnsL) == list:   attnsL = torch.stack(attnsL, 0)
+    if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0) #
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0) # L, B, h, w
     if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0) # B, C, H, W
 
