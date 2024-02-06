@@ -21,10 +21,10 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
                 linecolor=None, linewidths=0.1, fontsize=30, r=[1,1],
                 cmap="Greys", cbar=True, border=False,
-                output_dir='./result', file_name=None, show=True):
+                output_dir='./result', save_name=None, show=True,
+                vis_x= False, vis_y =  False):
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
-
     if p:
         print("|- Parameter Information")
         print("  |- Data Info (G, H, W)")
@@ -47,34 +47,39 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         print("    |- cbar        : 오른쪽 바 On/Off")
         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
-    if type(vmin) == float or vmin == None: vmin = [vmin] * len(matrixes)
-    if type(vmax) == float or vmax == None: vmax = [vmax] * len(matrixes)
 
     if title:
         title = title + list(range(len(title), len(matrixes) - len(title)))
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
     fig.set_size_inches(col * 8 * r[1], row * 8 * r[0])
+    # fig.set_size_inches(8, 8)
     fig.patch.set_facecolor('white')
     for e, matrix in enumerate(tqdm(matrixes)):
         if type(matrix) == torch.Tensor:
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
         res = sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
-                          , vmin=vmin[e], vmax=vmax[e], yticklabels=yticklabels, xticklabels=xticklabels
+                          , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
                           , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
                           , ax=ax)
 
-        if border:
-            for _, spine in res.spines.items():
-                spine.set_visible(True)
+        # if border:
+        #     for _, spine in res.spines.items():
+        #         spine.set_visible(True)
+        if not border:
+            ax.set_axis_off()
+        # if columns:
+        #     ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
+        if not vis_x: ax.xaxis.set_visible(False)
+        if not vis_y: ax.yaxis.set_visible(False)
 
         if title:
             ax.set(title="{} : {}".format(title, e))
-
-    if output_dir and file_name:
+    plt.tight_layout()
+    if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-        plt.savefig(os.path.join(output_dir, file_name))
+        plt.savefig(os.path.join(output_dir, save_name), transparent = True)
     if show:
         plt.show()
 
@@ -197,7 +202,7 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
                     attn = attn / attn.sum(dim=-1, keepdim=True)
                     rollout = torch.matmul(attn, rollout)  # (1, 197, 197)
 
-                rollout = rollout[:, 1] if data_from == "cls" else rollout[:, 1:].mean(dim=1) # (L, B, T)
+                rollout = rollout[:, 0] if data_from == "cls" else rollout[:, 1:].mean(dim=1) # (L, B, T)
                 rollout = rollout / rollout.max(dim=-1, keepdim=True)[0]
                 rollouts.append(rollout)
         rollouts = torch.stack(rollouts, dim=0)
@@ -207,7 +212,7 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
             rollouts = rollouts.reshape(-1, B, H, W) # L, B, H, W
 
     if ls_attentive:
-        attentive = saliencys[ls_attentive, :, 1] \
+        attentive = saliencys[ls_attentive, :, 0] \
                 if data_from == "cls" else saliencys[ls_attentive, :, 1:].mean(dim=2) # (L, B, T)
         attentive = attentive[:, :, 1:]
         if reshape:
@@ -241,8 +246,7 @@ def data2PIL(datas):
 
 def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
                 output_dir='./', save_name=None, show=True, fmt=1,
-                vis_x = False, vis_y = False,
-                p=False):
+                vis_x = False, vis_y = False, border=False, p=False):
     if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
 
     if showRows is not None:
@@ -267,18 +271,18 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
             # ax.imshow(data, cmap="gray")
             sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
                         , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
-
+        if not border:
+            ax.set_axis_off()
         if columns:
             ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
         if not vis_x: ax.xaxis.set_visible(False)
-        if not vis_x: ax.yaxis.set_visible(False)
+        if not vis_y: ax.yaxis.set_visible(False)
     plt.tight_layout()
-
 
     if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-        plt.savefig(os.path.join(output_dir, f'{save_name}.png'))
+        plt.savefig(os.path.join(output_dir, f'{save_name}.png'), transparent = True)
     if show:
         plt.show()
 

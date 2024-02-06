@@ -1,3 +1,6 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.analysis.model import JModel
 from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
@@ -8,8 +11,11 @@ from joonmyung.log import AverageMeter
 from joonmyung.utils import to_leaf, to_np
 from tqdm import tqdm
 from contextlib import suppress
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
+import numpy as np
 import torch
+import cv2
 
 
 
@@ -120,8 +126,8 @@ if __name__ == '__main__':
     # Section A. Data
     dataset_name, device, amp_autocast = "imagenet", 'cuda', torch.cuda.amp.autocast
     data_path, _, _ = data2path(dataset_name)
-    data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, [0]
-    test, activate = [True, True, False, False], [True, False, False] # ATTN, QKV, Head
+    data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, []
+    view, activate = [False, False, False, False, True], [True, False, False] # ATTN, QKV, Head
 
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
@@ -140,18 +146,19 @@ if __name__ == '__main__':
     samples_ = samples[bs] if bs else samples
     targets_ = targets[bs] if bs else targets
     output = model(samples_)
-    if test[0]:
+    if view[0]:
         drawImgPlot(unNormalize(samples_, "imagenet"))
-    if test[1]: # Attention
+    if view[1]: # Attention
         ls_rollout, ls_attentive, col = [0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10,11], 12
-        discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
+        # discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
+        discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.0, "mean", "cls"  # Attention, Gradient
         rollout, attentive = model.anaSaliency(True, False, output, discard_ratios=discard_ratios,
                                          ls_attentive=ls_attentive, ls_rollout=ls_rollout,
                                          head_fusion = head_fusion, index=targets_, data_from=data_from,
                                          reshape=True)
 
-        datas_rollout = overlay(samples_, rollout, dataset_name)
-        datas_attn = overlay(samples_, attentive, dataset_name)
+        # datas_rollout = overlay(samples_, rollout, dataset_name)
+        datas_attn    = overlay(samples_, attentive, dataset_name)
 
         print(1)
         # drawImgPlot(datas_rollout[:12], col=col)
@@ -164,10 +171,10 @@ if __name__ == '__main__':
         # drawHeatmap(rollout[24:, 0], col=col)
 
 
-        # drawImgPlot(datas_attn, col=col)
+        drawImgPlot(datas_attn, col=col)
         # drawHeatmap(attentive[6:, 0], col=col)
         # drawHeatmap(attentive[:, 0], col=col, vmin=attentive.reshape(-1, 196).quantile(v_ratio, dim=1), vmax=attentive.reshape(-1, 196).quantile(1 - v_ratio, dim=1))
-    if test[2]: # HELLO
+    if view[2]: # HELLO
         attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (B, L, T_Q, T_K)
         cls2cls     = attn[:, :, :1, 0].mean(dim=2)
         patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1)
@@ -178,7 +185,7 @@ if __name__ == '__main__':
         to_np(torch.stack([cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
         print(1)
 
-    if test[3]: # Gradient
+    if view[3]: # Gradient
         samples_.requires_grad, model.detach, k = True, False, 3
         output = model(samples_)
         attn = torch.stack(model.info["attn"]["f"], dim=1).mean(dim=[2,3])[0,-2]
@@ -189,3 +196,22 @@ if __name__ == '__main__':
         # drawHeatmap(b)
         print(1)
         # to_np(torch.stack([attn[:, :, 0], attn[:, :, 1:].sum(dim=-1)], -1)[0])
+
+
+    if view[4]:
+        # img = np.array(imgs[1])
+        img = cv2.imread('../file/img.png')
+        plt.imshow(img)
+        plt.show()
+
+        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+        (success, saliencyMap) = saliency.computeSaliency(img)
+        saliencyMap = (saliencyMap * 255).astype("uint8")
+        plt.imshow(saliencyMap)
+        plt.show()
+
+        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+        (success, saliencyFineMap) = saliency.computeSaliency(img)
+        threshMap = cv2.threshold(saliencyFineMap.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        plt.imshow(threshMap)
+        plt.show()

@@ -269,6 +269,45 @@ class MetricLogger(object):
 
 
 
+
+from pathlib import Path
+def list2name(value):
+    return str(value).replace(" ", "").replace("],[", "_").replace("[", "").replace(",", "").replace("]", "")
+def list2str(value):
+    return str(value).replace(" ", "")
+
+
+def resultManager(file_name, folder_path = "./result",
+                  new_result = None, checkColumns = None, duplicate = False, duplicate_check=False):
+    Path(folder_path).mkdir(parents=True, exist_ok=True)
+    file_path = os.path.join(folder_path, file_name)
+    try:
+        with open(file_path, 'rb') as picklefile:
+            results = pickle.load(picklefile)
+    except FileNotFoundError:
+        results = []
+
+    if new_result is not None:  # update log file
+        if checkColumns is not None and (not duplicate or duplicate_check):  # check exist
+            for result in results:
+                # 하나도 안 같은경우
+                if not sum([list2str(result[checkColumn]) != list2str(new_result[checkColumn]) if checkColumn in result.keys() else True for checkColumn in checkColumns]):
+                    return False
+            if duplicate_check:
+                return True
+        results.append(new_result)
+    else:
+        return results
+
+    with open(file_path, 'wb') as picklefile: # pass
+        pickle.dump(results, picklefile)
+    print(f"saved result path : {file_path}")
+    return True
+
+
+
+
+
 # if __name__ == "__main__":
 #     from playground.analysis.lib_import import *
 #     dataset_name, server, device = "imagenet", "148", "cuda"

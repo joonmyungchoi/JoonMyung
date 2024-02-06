@@ -41,13 +41,15 @@ class JDataset():
             result[:, c].sub_(m).div_(s)
         return result
 
-    def __init__(self, data_path="/hub_data1/joonmyung/data", dataset="imagenet", device="cuda"):
+    def __init__(self, data_path="/hub_data1/joonmyung/data", dataset="imagenet", device="cuda", train = False):
         dataset = dataset.lower()
 
         self.d      = dataset.lower()
         self.num_classes = 1000 if self.d == "imagenet" else 100
-        [self.d_kind, self.d_type] = ["imagenet", "val"] if self.d == "imagenet" else ["cifar", "test"]
-        # [self.d_kind, self.d_type] = ["imagenet", "train"] if self.d == "imagenet" else ["cifar", "test"]
+        if train:
+            [self.d_kind, self.d_type] = ["imagenet", "val"] if self.d == "imagenet" else ["cifar", "test"]
+        else:
+            [self.d_kind, self.d_type] = ["imagenet", "train"] if self.d == "imagenet" else ["cifar", "train"]
         self.device = device
 
         self.transform = self.transforms[self.d_kind]
