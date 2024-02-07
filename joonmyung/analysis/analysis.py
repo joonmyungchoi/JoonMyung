@@ -215,3 +215,4 @@ if __name__ == '__main__':
         threshMap = cv2.threshold(saliencyFineMap.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
         plt.imshow(threshMap)
         plt.show()
+        print(1)

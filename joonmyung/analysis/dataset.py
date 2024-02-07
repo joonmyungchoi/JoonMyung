@@ -13,10 +13,10 @@ from joonmyung.utils import getDir
 class JDataset():
     distributions = {"imagenet": {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
                         "cifar": {"mean": [0.4914, 0.4822, 0.4465], "std": [0.2023, 0.1994, 0.2010]}}
-    transform_cifar    = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["cifar"]["mean"], distributions["cifar"]["std"])])
-    transform_imagenet_ = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
+    transform_cifar         = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["cifar"]["mean"], distributions["cifar"]["std"])])
+    transform_imagenet_     = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
     # transform_imagenet_vis = transforms.Compose([transforms.Resize(256, interpolation=3), transforms.CenterCrop(224)])
-    transform_imagenet_vis = transforms.Compose([transforms.Resize((224, 224), interpolation=3)])
+    transform_imagenet_vis  = transforms.Compose([transforms.Resize((224, 224), interpolation=3)])
     transform_imagenet_norm = transforms.Compose([transforms.ToTensor(), transforms.Normalize(distributions["imagenet"]["mean"], distributions["imagenet"]["std"])])
 
     # transforms.Resize(int((256 / 224) * input_size), interpolation=InterpolationMode.BICUBIC),
