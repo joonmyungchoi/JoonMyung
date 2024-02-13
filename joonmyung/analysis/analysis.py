@@ -199,21 +199,15 @@ if __name__ == '__main__':
 
 
     if view[4]:
-        # img = np.array(imgs[1])
-        img = cv2.imread('../../file/img.png')
-        # plt.imshow(img)
-        # plt.show()
+        img = imgs[0]
 
-        saliency = cv2.StaticSaliencySpectralResidual()
-        # saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
         (success, saliencyMap) = saliency.computeSaliency(img)
         saliencyMap = (saliencyMap * 255).astype("uint8")
-        plt.imshow(saliencyMap)
-        plt.show()
+
 
         saliency = cv2.saliency.StaticSaliencyFineGrained_create()
         (success, saliencyFineMap) = saliency.computeSaliency(img)
-        threshMap = cv2.threshold(saliencyFineMap.astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        plt.imshow(threshMap)
-        plt.show()
-        print(1)
+        threshMap = cv2.threshold((saliencyFineMap * 255).astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        # plt.imshow(threshMap)
+        # plt.show()
