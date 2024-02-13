@@ -116,20 +116,17 @@ class Analysis:
             loss.backward(retain_graph=True)
             grad = self.info["attn"]["b"]
 
-        return sal(attn, grad
-                   , head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from
-                   , ls_rollout=ls_rollout, ls_attentive=ls_attentive, reshape=reshape, device=device)
+        return saliency(attn, grad
+                        , head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from
+                        , ls_rollout=ls_rollout, ls_attentive=ls_attentive, reshape=reshape, device=device)
 
 
 if __name__ == '__main__':
     # Section A. Data
     dataset_name, device, amp_autocast = "imagenet", 'cuda', torch.cuda.amp.autocast
     data_path, _, _ = data2path(dataset_name)
-    # data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, []
-    data_num, batch_size, bs = [[2, 0]], 16, []
-    view, activate = [True, True, False, False, False], [True, False, False]
-        # VIEW     : IMG  | ROLL | ATTN | Head | Saliency
-        # ACTIVATE : ATTN |  QKV | HEAD
+    data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, []
+    view, activate = [True, True, False, False, False], [True, False, False] # ATTN, QKV, Head
 
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
@@ -150,8 +147,7 @@ if __name__ == '__main__':
     output = model(samples_)
     if view[0]:
         drawImgPlot(unNormalize(samples_, "imagenet"))
-
-    if view[1]: # ROLLOUT
+    if view[1]: # Attention
         ls_rollout, ls_attentive, col = [0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10,11], 12
         # discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
         discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.0, "mean", "cls"  # Attention, Gradient
@@ -160,27 +156,15 @@ if __name__ == '__main__':
                                          head_fusion = head_fusion, index=targets_, data_from=data_from,
                                          reshape=True)
 
-        # datas_rollout = overlay(samples_, rollout, dataset_name)
+        datas_rollout = overlay(samples_, rollout, dataset_name)
         datas_attn    = overlay(samples_, attentive, dataset_name)
-
-        print(1)
-        # drawImgPlot(datas_rollout[:12], col=col)
-        # drawImgPlot(datas_rollout[12:24], col=col)
-        # drawHeatmap(rollout[:12, 0], col=col, vmin = rollout.reshape(-1, 196)[:12].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[:12].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[12:24, 0], col=col, vmin = rollout.reshape(-1, 196)[12:24].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[12:24].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[24:, 0], col=col, vmin = rollout.reshape(-1, 196)[24:].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[24:].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[:12, 0], col=col)
-        # drawHeatmap(rollout[12:24, 0], col=col)
-        # drawHeatmap(rollout[24:, 0], col=col)
-
-
         drawImgPlot(datas_attn, col=col)
         # drawHeatmap(attentive[6:, 0], col=col)
         # drawHeatmap(attentive[:, 0], col=col, vmin=attentive.reshape(-1, 196).quantile(v_ratio, dim=1), vmax=attentive.reshape(-1, 196).quantile(1 - v_ratio, dim=1))
-    if view[2]: #
-        attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (B, L, T_Q, T_K)
-        cls2cls     = attn[:, :, :1, 0].mean(dim=2)
-        patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1)
+    if view[2]: # ATTENTION MOVEMENT (FROM / TO)
+        attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (8 (B), 12 (L), 197(T_Q), 197(T_K))
+        cls2cls     = attn[:, :, :1, 0].mean(dim=2)              # (8(B), 12(L))
+        patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1) # (8(B), 12(L))
         to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0)]))
 
         cls2patch   = attn[:, :, 1:, 0].mean(dim=2)
@@ -188,7 +172,7 @@ if __name__ == '__main__':
         to_np(torch.stack([cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
         print(1)
 
-    if view[3]: # Gradient
+    if view[3]:
         samples_.requires_grad, model.detach, k = True, False, 3
         output = model(samples_)
         attn = torch.stack(model.info["attn"]["f"], dim=1).mean(dim=[2,3])[0,-2]
@@ -201,16 +185,16 @@ if __name__ == '__main__':
         # to_np(torch.stack([attn[:, :, 0], attn[:, :, 1:].sum(dim=-1)], -1)[0])
 
 
-    if view[4]: # Saliency
-        img = imgs[0]
+    if view[4]: # SALIENCY
+        img = np.array(imgs[0])
 
-        sal = cv2.saliency.StaticSaliencySpectralResidual_create()
-        (success, saliencyMap) = sal.computeSaliency(img)
+        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+        (success, saliencyMap) = saliency.computeSaliency(img)
         saliencyMap = (saliencyMap * 255).astype("uint8")
 
 
-        sal = cv2.saliency.StaticSaliencyFineGrained_create()
-        (success, saliencyFineMap) = sal.computeSaliency(img)
+        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+        (success, saliencyFineMap) = saliency.computeSaliency(img)
         threshMap = cv2.threshold((saliencyFineMap * 255).astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
         # plt.imshow(threshMap)
         # plt.show()
