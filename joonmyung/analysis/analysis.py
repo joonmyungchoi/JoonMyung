@@ -200,11 +200,12 @@ if __name__ == '__main__':
 
     if view[4]:
         # img = np.array(imgs[1])
-        img = cv2.imread('../file/img.png')
-        plt.imshow(img)
-        plt.show()
+        img = cv2.imread('../../file/img.png')
+        # plt.imshow(img)
+        # plt.show()
 
-        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+        saliency = cv2.StaticSaliencySpectralResidual()
+        # saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
         (success, saliencyMap) = saliency.computeSaliency(img)
         saliencyMap = (saliencyMap * 255).astype("uint8")
         plt.imshow(saliencyMap)

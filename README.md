@@ -66,7 +66,7 @@ JoonMyung Choi's Package
 
 
 
-
+[//]: # (CUDA_VISIBLE_DEVICES=2 python playground/models/fastsam/model.py --split 0)
 # CUDA_VISIBLE_DEVICES=2 nohup python playground/models/fastsam/model.py --split 0 > 0.log 2>&1  &
 # CUDA_VISIBLE_DEVICES=2 nohup python playground/models/fastsam/model.py --split 1 > 1.log 2>&1  &
 # CUDA_VISIBLE_DEVICES=2 nohup python playground/models/fastsam/model.py --split 2 > 2.log 2>&1  &
