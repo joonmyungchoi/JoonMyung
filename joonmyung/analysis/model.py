@@ -21,30 +21,15 @@ class JModel():
         model.load_state_dict(state_dict)
 
 
-    def getModel(self, model_number=0, model_name = "deit_tiny", **kwargs):
-        model, args = None, None
-        if model_number == 0:
-            model = create_model(model_name, pretrained=True, num_classes=self.num_classes, in_chans=3, global_pool=None, scriptable=False).to(self.device)
-        elif model_number == 1:
-            model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True).to(self.device)
+    def getModel(self, model_type=0, model_name ="deit_tiny", **kwargs):
 
-        # elif model_number == 2:
-        #     model_path = self.model_path.format(str(epoch))
-        #     if not isDir(model_path): raise FileExistsError
-        #
-        #     checkpoint = torch.load(model_path, map_location='cpu')
-        #     args = checkpoint['args']
-        #     if "token_merging" in kwargs.keys():
-        #         args.task_type[1] = 1 if kwargs["token_merging"] else 0
-        #
-        #     model = get_model(args).to(self.device)
-        #     state_dict = []
-        #     for n, p in checkpoint['model'].items():
-        #         if "total_ops" not in n and "total_params" not in n:
-        #             state_dict.append((n, p))
-        #     state_dict = dict(state_dict)
-        #     model.load_state_dict(state_dict)
-
+        if model_type == 0:
+            model = create_model(model_name, pretrained=True, num_classes=self.num_classes, in_chans=3, global_pool=None, scriptable=False)
+        elif model_type == 1:
+            model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True)
+        else:
+            raise ValueError
         model.eval()
 
-        return model, args
+        return model.to(self.device)
+

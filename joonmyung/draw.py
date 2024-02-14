@@ -304,7 +304,7 @@ def overlay(imgs, attnsL, dataset=None):
     if type(attnsL) == list:   attnsL = torch.stack(attnsL, 0)
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0) #
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0) # L, B, h, w
-    if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0) # B, C, H, W
+    if len(imgs.shape)   == 3: imgs = imgs.unsqueeze(0)     # B, C, H, W
 
     imgs  = unNormalize(imgs, dataset)
     results = []

@@ -4,7 +4,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.analysis.model import JModel
 from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
-# from joonmyung.analysis import JDataset, JModel
 from joonmyung.meta_data import data2path
 from joonmyung.metric import targetPred
 from joonmyung.log import AverageMeter
@@ -18,22 +17,52 @@ import torch
 import cv2
 
 
+def anaModel(transformer_class):
+    class VisionTransformer(transformer_class):
+        def forward_features(self, x):
+            x = self.patch_embed(x)
+            cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+            if self.dist_token is None:
+                x = torch.cat((cls_token, x), dim=1)
+            else:
+                x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
+
+
+            if self.analysis[0] == 1:   # ONLY PATCH
+                x = self.pos_drop(x)
+            elif self.analysis[0] == 2: # ONLY POS
+                x = self.pos_drop(self.pos_embed)
+            else: # PATCH + POS
+                x = self.pos_drop(x + self.pos_embed)
+
+            x = self.blocks(x)
+            x = self.norm(x)
+            if self.dist_token is None:
+                return self.pre_logits(x[:, 0])
+            else:
+                return x[:, 0], x[:, 1]
+
+    return VisionTransformer
 
 class Analysis:
-    def __init__(self, model, activate = [True, False, False], detach=True, key_name=None, num_classes = 1000
+    def __init__(self, model, analysis = [0], activate = [True, False, False], detach=True, key_name=None, num_classes = 1000
                  , cls_start=0, cls_end=1, patch_start=1, patch_end=None
                  , ks = 5
                  , amp_autocast=suppress, device="cuda"):
         # Section A. Model
         self.num_classes = num_classes
         self.key_name = key_name
+
+        model_ = anaModel(model.__class__)
+        model.__class__ = model_
+        model.analysis = analysis
         self.model = model
         self.ks = ks
         self.detach = detach
 
         # Section B. Attention
-        self.kwargs_roll = {"cls_start" : cls_start, "cls_end" : cls_end
-                            , "patch_start" : patch_start, "patch_end" : patch_end}
+        self.kwargs_roll = {"cls_start" : cls_start, "cls_end" : cls_end,
+                            "patch_start" : patch_start, "patch_end" : patch_end}
 
 
         # Section C. Setting
@@ -44,7 +73,8 @@ class Analysis:
 
 
         self.amp_autocast = amp_autocast
-        self.device = device
+        self.device       = device
+
         for name, module in self.model.named_modules():
             for hook in hooks:
                 if hook["name_i"] in name and hook["name_o"] not in name:
@@ -96,8 +126,8 @@ class Analysis:
             outputs = self.model(samples, **kwargs)
             return outputs
         else:
-            for self.inputs, self.targets in tqdm(samples):
-                _ = self.model(self.inputs)
+            for sample, self.targets in tqdm(samples):
+                _ = self.model(sample)
             return False
 
     def anaSaliency(self, attn=True, grad=False, output=None, index=None,
@@ -126,8 +156,11 @@ if __name__ == '__main__':
     dataset_name, device, amp_autocast = "imagenet", 'cuda', torch.cuda.amp.autocast
     data_path, _, _ = data2path(dataset_name)
     data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, []
-    view, activate = [True, True, False, False, False], [True, False, False] # ATTN, QKV, Head
-
+    view, activate = [False, True, False, False, False], [True, False, False] #
+        # VIEW     : IMG, SALIENCY(M), SALIENCY(D), SALIENCY(S), ATTN. MOVEMENT
+        # ACTIVATE : ATTN, QKV, HEAD
+    analysis = [2]
+        # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
     loader = dataset.getAllItems(batch_size)
@@ -138,8 +171,8 @@ if __name__ == '__main__':
     # model_number, model_name = 1, "deit_tiny_patch16_224"
 
     modelMaker = JModel(dataset.num_classes, device=device)
-    model, args = modelMaker.getModel(model_number, model_name)
-    model = Analysis(model, activate = activate, device=device)
+    model = modelMaker.getModel(model_number, model_name)
+    model = Analysis(model, analysis = analysis, activate = activate, device=device)
 
 
     samples_ = samples[bs] if bs else samples
@@ -147,32 +180,46 @@ if __name__ == '__main__':
     output = model(samples_)
     if view[0]:
         drawImgPlot(unNormalize(samples_, "imagenet"))
-    if view[1]: # Attention
+
+    if view[1]: # SALIENCY W/ MODEL
         ls_rollout, ls_attentive, col = [0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10,11], 12
         # discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
         discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.0, "mean", "cls"  # Attention, Gradient
         rollout, attentive = model.anaSaliency(True, False, output, discard_ratios=discard_ratios,
-                                         ls_attentive=ls_attentive, ls_rollout=ls_rollout,
-                                         head_fusion = head_fusion, index=targets_, data_from=data_from,
-                                         reshape=True)
+                                         ls_attentive = ls_attentive, ls_rollout=ls_rollout,
+                                         head_fusion  = head_fusion, index=targets_, data_from=data_from,
+                                         reshape      = True) # (12(L), 8(B), 14(H), 14(W))
 
-        datas_rollout = overlay(samples_, rollout, dataset_name)
+        datas_rollout = overlay(samples_, rollout,   dataset_name)
         datas_attn    = overlay(samples_, attentive, dataset_name)
         drawImgPlot(datas_attn, col=col)
+        print(1)
+        # drawImgPlot(datas_rollout, col=col)
+        # drawImgPlot(datas_attn, col=col)
+        # drawHeatmap(rollout[:12, 0], col=col, vmin = rollout.reshape(-1, 196)[:12].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[:12].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[12:24, 0], col=col, vmin = rollout.reshape(-1, 196)[12:24].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[12:24].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[24:, 0], col=col, vmin = rollout.reshape(-1, 196)[24:].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[24:].quantile(1 - v_ratio, dim=1))
+        # drawHeatmap(rollout[:12, 0], col=col)
+        # drawHeatmap(rollout[12:24, 0], col=col)
+        # drawHeatmap(rollout[24:, 0], col=col)
+
         # drawHeatmap(attentive[6:, 0], col=col)
         # drawHeatmap(attentive[:, 0], col=col, vmin=attentive.reshape(-1, 196).quantile(v_ratio, dim=1), vmax=attentive.reshape(-1, 196).quantile(1 - v_ratio, dim=1))
-    if view[2]: # ATTENTION MOVEMENT (FROM / TO)
-        attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (8 (B), 12 (L), 197(T_Q), 197(T_K))
-        cls2cls     = attn[:, :, :1, 0].mean(dim=2)              # (8(B), 12(L))
-        patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1) # (8(B), 12(L))
-        to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0)]))
 
-        cls2patch   = attn[:, :, 1:, 0].mean(dim=2)
-        patch2patch = attn[:, :, 1:, 1:].mean(dim=2).sum(dim=-1)
-        to_np(torch.stack([cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
-        print(1)
+    if view[2]:  # SALIENCY W/ DATA
+        img = np.array(imgs[0])
 
-    if view[3]:
+        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
+        (success, saliencyMap) = saliency.computeSaliency(img)
+        saliencyMap = (saliencyMap * 255).astype("uint8")
+
+        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+        (success, saliencyFineMap) = saliency.computeSaliency(img)
+        threshMap = cv2.threshold((saliencyFineMap * 255).astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        # plt.imshow(threshMap)
+        # plt.show()
+
+    if view[3]:  # SALIENCY FOR INPUT
         samples_.requires_grad, model.detach, k = True, False, 3
         output = model(samples_)
         attn = torch.stack(model.info["attn"]["f"], dim=1).mean(dim=[2,3])[0,-2]
@@ -184,17 +231,13 @@ if __name__ == '__main__':
         print(1)
         # to_np(torch.stack([attn[:, :, 0], attn[:, :, 1:].sum(dim=-1)], -1)[0])
 
+    if view[4]: # ATTENTION MOVEMENT (FROM / TO)
+        attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (8 (B), 12 (L), 197(T_Q), 197(T_K))
+        cls2cls     = attn[:, :, :1, 0].mean(dim=2)              # (8(B), 12(L))
+        patch2cls   = attn[:, :, :1, 1:].mean(dim=2).sum(dim=-1) # (8(B), 12(L))
+        to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0)]))
 
-    if view[4]: # SALIENCY
-        img = np.array(imgs[0])
-
-        saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
-        (success, saliencyMap) = saliency.computeSaliency(img)
-        saliencyMap = (saliencyMap * 255).astype("uint8")
-
-
-        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
-        (success, saliencyFineMap) = saliency.computeSaliency(img)
-        threshMap = cv2.threshold((saliencyFineMap * 255).astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        # plt.imshow(threshMap)
-        # plt.show()
+        cls2patch   = attn[:, :, 1:, 0].mean(dim=2)
+        patch2patch = attn[:, :, 1:, 1:].mean(dim=2).sum(dim=-1)
+        to_np(torch.stack([cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
+        print(1)
