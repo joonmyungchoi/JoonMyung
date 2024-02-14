@@ -1,5 +1,5 @@
 import torch.distributed as dist
-import pandas as pd
+from pathlib import Path
 import numpy as np
 import argparse
 import zipfile
@@ -102,7 +102,8 @@ def make_zipfile(src_dir, save_path, enclosing_dir="", exclude_dirs=None, exclud
     #     LOGGER.info(f"Saving code done.")
 
 def getDir(path):
-    return os.listdir(path)
+    # return [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+    return [item.name for item in Path(path).iterdir() if item.is_dir()]
 
 def isDir(path):
     return os.path.exists(path)
