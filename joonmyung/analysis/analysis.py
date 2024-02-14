@@ -31,7 +31,6 @@ class Analysis:
         self.ks = ks
         self.detach = detach
 
-
         # Section B. Attention
         self.kwargs_roll = {"cls_start" : cls_start, "cls_end" : cls_end
                             , "patch_start" : patch_start, "patch_end" : patch_end}
