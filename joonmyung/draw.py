@@ -268,9 +268,9 @@ def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=N
         elif data.shape[-1] == 3: #
             ax.imshow(data)
         elif data.shape[-1] == 1: #
-            # ax.imshow(data, cmap="gray")
-            sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
-                        , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
+            ax.imshow(data, cmap="gray")
+            # sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
+            #             , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
         if not border:
             ax.set_axis_off()
         if columns:
