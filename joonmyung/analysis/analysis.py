@@ -28,12 +28,17 @@ def anaModel(transformer_class):
                 x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
 
 
-            if self.analysis[0] == 1:   # ONLY PATCH
-                x = self.pos_drop(x)
-            elif self.analysis[0] == 2: # ONLY POS
-                x = self.pos_drop(self.pos_embed)
+            if self.analysis[0] == 1:   # PATCH
+                x = x # (8, 197, 192)
+            elif self.analysis[0] == 2: # POS
+                x = self.pos_embed # (1, 197, 192)
+            elif self.analysis[0] == 3:  # PATCH (RANDOM I) + POS
+                x = torch.rand_like(self.pos_embed, device=x.device) + self.pos_embed
+            elif self.analysis[0] == 4:  # PATCH (RANDOM II) + POS
+                x = torch.rand_like(self.cls_token, device=x.device).repeat(1, x.shape[1], 1) + self.pos_embed
             else: # PATCH + POS
-                x = self.pos_drop(x + self.pos_embed)
+                x = x + self.pos_embed
+            x = self.pos_drop(x)
 
             x = self.blocks(x)
             x = self.norm(x)
@@ -159,7 +164,7 @@ if __name__ == '__main__':
     view, activate = [False, True, False, False, False], [True, False, False] #
         # VIEW     : IMG, SALIENCY(M), SALIENCY(D), SALIENCY(S), ATTN. MOVEMENT
         # ACTIVATE : ATTN, QKV, HEAD
-    analysis = [2]
+    analysis = [4]
         # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
     dataset = JDataset(data_path, dataset_name, device=device)
     samples, targets, imgs, label_names = dataset.getItems(data_num)
