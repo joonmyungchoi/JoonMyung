@@ -25,3 +25,23 @@ def normalization(t, type = 0):
         return t / t.max()
     elif type == 1:
         return t / t.min()
+
+from torchvision import transforms
+from torchvision.transforms import InterpolationMode
+
+def getTransform(train = False, totensor = False, resize=True):
+
+    if not resize:
+        transform = lambda x: x
+    else:
+        transform = []
+
+        transform.append(transforms.RandomResizedCrop(224, scale=(0.5, 1.0), interpolation=InterpolationMode.BICUBIC)) \
+            if train else transform.append(transforms.Resize((224, 224), interpolation=3))
+
+        if totensor:
+            transform.append(transforms.ToTensor())
+            transform.append(transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]))
+        transform = transforms.Compose(transform)
+
+    return transform

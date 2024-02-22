@@ -1,10 +1,10 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.analysis.model import JModel
 from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
 from joonmyung.meta_data import data2path
+from joonmyung.data import getTransform
 from joonmyung.metric import targetPred
 from joonmyung.log import AverageMeter
 from joonmyung.utils import to_leaf, to_np
@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
 import torch
+import PIL
 import cv2
 
 
@@ -158,24 +159,32 @@ class Analysis:
 
 if __name__ == '__main__':
     # Section A. Data
-    dataset_name, device, amp_autocast = "imagenet", 'cuda', torch.cuda.amp.autocast
+    dataset_name, device, amp_autocast, debug = "imagenet", 'cuda', torch.cuda.amp.autocast, True
     data_path, _, _ = data2path(dataset_name)
     data_num, batch_size, bs = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], 16, []
     view, activate = [False, True, False, False, False], [True, False, False] #
         # VIEW     : IMG, SALIENCY(M), SALIENCY(D), SALIENCY(S), ATTN. MOVEMENT
         # ACTIVATE : ATTN, QKV, HEAD
-    analysis = [4]
+    analysis = [2]
         # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
-    dataset = JDataset(data_path, dataset_name, device=device)
-    samples, targets, imgs, label_names = dataset.getItems(data_num)
-    loader = dataset.getAllItems(batch_size)
+    if not debug:
+        dataset = JDataset(data_path, dataset_name, device=device)
+        samples, targets, imgs, label_names = dataset.getItems(data_num)
+        loader = dataset.getAllItems(batch_size)
+        num_classes = dataset.num_classes
+    else:
+
+        transform = getTransform(False, True)
+        img = PIL.Image.open('/hub_data1/joonmyung/data/imagenet/train/n01440764/n01440764_10026.JPEG')
+        samples, targets, label_names = transform(img)[None].to(device), torch.tensor([0]).to(device)[None].to(device), 'tench, Tinca tinca'
+        num_classes = 1000
 
     # Section B. Model
     model_number, model_name = 0, "deit_tiny_patch16_224" # deit_tiny_patch16_224, deit_small_patch16_224, deit_base_patch16_224
     # model_number, model_name = 0, "vit_tiny_patch16_224" # vit_tiny_patch16_224,  vit_small_patch16_224,  vit_base_patch16_224
     # model_number, model_name = 1, "deit_tiny_patch16_224"
 
-    modelMaker = JModel(dataset.num_classes, device=device)
+    modelMaker = JModel(num_classes, device=device)
     model = modelMaker.getModel(model_number, model_name)
     model = Analysis(model, analysis = analysis, activate = activate, device=device)
 
@@ -189,27 +198,16 @@ if __name__ == '__main__':
     if view[1]: # SALIENCY W/ MODEL
         ls_rollout, ls_attentive, col = [0,1,2,3,4,5,6,7,8,9,10,11], [0,1,2,3,4,5,6,7,8,9,10,11], 12
         # discard_ratios, v_ratio, head_fusion, data_from = [0.0, 0.4, 0.8], 0.1, "mean", "cls"  # Attention, Gradient
-        discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.0, "mean", "cls"  # Attention, Gradient
+        discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.0, "mean", "patch"  # Attention, Gradient
         rollout, attentive = model.anaSaliency(True, False, output, discard_ratios=discard_ratios,
                                          ls_attentive = ls_attentive, ls_rollout=ls_rollout,
                                          head_fusion  = head_fusion, index=targets_, data_from=data_from,
                                          reshape      = True) # (12(L), 8(B), 14(H), 14(W))
-
-        datas_rollout = overlay(samples_, rollout,   dataset_name)
-        datas_attn    = overlay(samples_, attentive, dataset_name)
-        drawImgPlot(datas_attn, col=col)
         print(1)
+        # datas_rollout = overlay(samples_, rollout,   dataset_name)
         # drawImgPlot(datas_rollout, col=col)
+        # datas_attn    = overlay(samples_, attentive, dataset_name)
         # drawImgPlot(datas_attn, col=col)
-        # drawHeatmap(rollout[:12, 0], col=col, vmin = rollout.reshape(-1, 196)[:12].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[:12].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[12:24, 0], col=col, vmin = rollout.reshape(-1, 196)[12:24].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[12:24].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[24:, 0], col=col, vmin = rollout.reshape(-1, 196)[24:].quantile(v_ratio, dim=1), vmax = rollout.reshape(-1, 196)[24:].quantile(1 - v_ratio, dim=1))
-        # drawHeatmap(rollout[:12, 0], col=col)
-        # drawHeatmap(rollout[12:24, 0], col=col)
-        # drawHeatmap(rollout[24:, 0], col=col)
-
-        # drawHeatmap(attentive[6:, 0], col=col)
-        # drawHeatmap(attentive[:, 0], col=col, vmin=attentive.reshape(-1, 196).quantile(v_ratio, dim=1), vmax=attentive.reshape(-1, 196).quantile(1 - v_ratio, dim=1))
 
     if view[2]:  # SALIENCY W/ DATA
         img = np.array(imgs[0])
