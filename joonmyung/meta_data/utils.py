@@ -7,14 +7,13 @@ import socket
 import torch
 import os
 
-def data2path(dataset, server = "",
+def data2path(dataset,
               conference="", wandb_version="", wandb_name="", hub_num = 1):
 
     hostname = socket.gethostname()
-    server   = server if server != "" \
-                else hostname if "mlv" in hostname \
-                    else "kakao" if "dakao" in hostname \
-                        else "kisti_"+hostname
+    server   = hostname if "mlv" in hostname \
+                else "kakao" if "dakao" in hostname \
+                    else "kisti_"+hostname
     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
     print(server, " : ", hostname, " : ", getpass.getuser())
     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")

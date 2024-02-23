@@ -173,7 +173,6 @@ if __name__ == '__main__':
         loader = dataset.getAllItems(batch_size)
         num_classes = dataset.num_classes
     else:
-
         transform = getTransform(False, True)
         img = PIL.Image.open('/hub_data1/joonmyung/data/imagenet/train/n01440764/n01440764_10026.JPEG')
         samples, targets, label_names = transform(img)[None].to(device), torch.tensor([0]).to(device)[None].to(device), 'tench, Tinca tinca'

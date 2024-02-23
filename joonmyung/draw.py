@@ -298,15 +298,16 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 
 
-def overlay(imgs, attnsL, dataset=None):
+def overlay(imgs, attnsL, dataset="imagenet"):
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))
     if type(attnsL) == list:   attnsL = torch.stack(attnsL, 0)
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0) #
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0) # L, B, h, w
     if len(imgs.shape)   == 3: imgs = imgs.unsqueeze(0)     # B, C, H, W
+    if dataset:
+        imgs  = unNormalize(imgs, dataset)
 
-    imgs  = unNormalize(imgs, dataset)
     results = []
     for attns in attnsL:
         for img, attn in zip(imgs, attns):
