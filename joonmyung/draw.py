@@ -212,8 +212,10 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
             rollouts = rollouts.reshape(-1, B, H, W) # L, B, H, W
 
     if ls_attentive:
+        # attentive = saliencys[ls_attentive, :, 0] \
+        #         if data_from == "cls" else saliencys[ls_attentive, :, 1:].mean(dim=2) # (L, B, T)
         attentive = saliencys[ls_attentive, :, 0] \
-                if data_from == "cls" else saliencys[ls_attentive, :, 1:].mean(dim=2) # (L, B, T)
+            if data_from == "cls" else saliencys[ls_attentive].mean(dim=2)  # (L, B, T)
         attentive = attentive[:, :, 1:]
         if reshape:
             attentive = attentive.reshape(-1, B, H, W)

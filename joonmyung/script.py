@@ -3,6 +3,7 @@ from tqdm import tqdm
 import subprocess
 import time
 import pynvml
+import datetime
 
 class GPU_Worker():
     def __init__(self, gpus:list, waitTimeInit = 30, waitTime = 60, count = 0,

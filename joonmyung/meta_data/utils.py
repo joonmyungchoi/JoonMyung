@@ -31,9 +31,13 @@ def data2path(dataset,
 
     if dataset in ["imagenet", "IMNET"]:
         data_path = os.path.join(data_path, "imagenet") if "kakao" not in server else os.path.join(data_path, "imagenet-pytorch")
+        num_classes = 1000
+    else:
+        raise ValueError
+
     output_dir    = os.path.join(output_dir, conference, wandb_version, wandb_name)
 
-    return data_path, output_dir, server
+    return data_path, num_classes, output_dir, server
 
 def get_label(key, d_name ="imagenet"):
     d_name = d_name.lower()

@@ -1,4 +1,4 @@
-from fvcore.nn import FlopCountAnalysis, flop_count_table, flop_count_str
+from fvcore.nn import FlopCountAnalysis, flop_count_table
 from torchprofile import profile_macs
 from typing import Tuple
 from thop import profile
@@ -24,7 +24,7 @@ def numel(model,
     return round(params, round_num)
 
 @torch.no_grad()
-def flops(model, size, round_num=1, eval=True, device="cuda", fp16=False, **kwargs):
+def flops(model, size, round_num=1, eval=True, fp16=False, device="cuda", **kwargs):
     if eval: model.eval()
     with torch.cuda.amp.autocast(enabled=fp16):
         inputs = torch.randn(size, device=device, requires_grad=True)
