@@ -70,7 +70,7 @@ class GPU_Worker():
         if len(self.availGPUs) < self.need_gpu: self.setGPU()
         gpus, self.availGPUs = self.availGPUs[:self.need_gpu], self.availGPUs[self.need_gpu:]
 
-        return ', '.join(map(str, gpus))
+        return ','.join(map(str, gpus))
 
 
     def check_process(self):
