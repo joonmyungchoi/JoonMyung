@@ -1,4 +1,6 @@
+from torchvision.transforms import InterpolationMode
 from joonmyung.meta_data.label import imnet_label, cifar_label
+from torchvision.datasets.folder import default_loader
 from timm.data import create_dataset, create_loader
 from torchvision import transforms
 from joonmyung.utils import getDir
@@ -43,8 +45,9 @@ class JDataset():
         size                = size if size else setting["size"]
 
         self.transform = [
-                transforms.Compose([transforms.Resize(size, interpolation=3), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
-                transforms.Compose([transforms.Resize(size, interpolation=3), transforms.ToTensor()]),
+                transforms.Compose([transforms.Resize((256,256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
+                transforms.Compose([transforms.Resize((256,256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
+                transforms.Compose([transforms.Resize(size, interpolation=InterpolationMode.BICUBIC), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
                 transforms.Compose([transforms.ToTensor()])
         ]
 
@@ -63,7 +66,10 @@ class JDataset():
             label_num, img_num, transform_type = idx
 
         img_path = self.img_paths[label_num][img_num]
-        img = PIL.Image.open(img_path)
+        # img = PIL.Image.open(img_path)
+
+        img = default_loader(img_path)
+
         data = self.transform[transform_type](img)
 
         return data.unsqueeze(0).to(self.device), torch.tensor(label_num).to(self.device), self.label_name[int(label_num)]

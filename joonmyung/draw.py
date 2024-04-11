@@ -157,8 +157,9 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 
 @torch.no_grad()
 def saliency(attentions=None, gradients=None, head_fusion="mean",
-             discard_ratios = [0.0], data_from="cls", ls_rollout=[], ls_attentive=[],
-             reshape=False, device="cpu"):
+             discard_ratios = [0.0], data_from="cls", reshape=False,
+             activate = [True, True, True], device="cpu"):
+
     # attentions : L * (B, H, h, w), gradients : L * (B, H, h, w)
     if type(discard_ratios) is not list: discard_ratios = [discard_ratios]
     saliencys = 1.
@@ -180,14 +181,14 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
 
     saliencys = saliencys.to(device)
 
-    _, B, _, T = saliencys.shape
+    L, B, _, T = saliencys.shape # (L(12), B(1), T(197), T(197))
     H = W = int(T ** 0.5)
 
-    rollouts, attentive = None, None
-    if ls_rollout:
+    result = {}
+    if activate[0]:
         rollouts, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
         for discard_ratio in discard_ratios:
-            for start in ls_rollout:
+            for start in range(L):
                 rollout = I
                 for attn in copy.deepcopy(saliencys[start:]):  # (L, B, w, h)
                     # TODO NEED TO CORRECT
@@ -207,44 +208,66 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
                 rollouts.append(rollout)
         rollouts = torch.stack(rollouts, dim=0)
         rollouts = rollouts[:, :, 1:]
+        rollouts = rollouts / rollouts.sum(dim=-1, keepdim=True)
 
         if reshape:
             rollouts = rollouts.reshape(-1, B, H, W) # L, B, H, W
+        result["rollout"] = rollouts
 
-    if ls_attentive:
+    if activate[1]:
         # attentive = saliencys[ls_attentive, :, 0] \
         #         if data_from == "cls" else saliencys[ls_attentive, :, 1:].mean(dim=2) # (L, B, T)
-        attentive = saliencys[ls_attentive, :, 0] \
-            if data_from == "cls" else saliencys[ls_attentive].mean(dim=2)  # (L, B, T)
+        attentive = saliencys[:, :, 0] \
+            if data_from == "cls" else saliencys.mean(dim=2)  # (L, B, T)
         attentive = attentive[:, :, 1:]
+        attentive = attentive / attentive.sum(dim=-1, keepdim=True)
+
         if reshape:
             attentive = attentive.reshape(-1, B, H, W)
+        result["attentive"] = attentive
 
-    return rollouts, attentive
+    if activate[2]:
+        entropy = (saliencys * torch.log(saliencys)).sum(dim=-1)[:, :, 1:] # (L(12), B(1), T(196))
+        entropy = entropy - entropy.amin(dim=-1, keepdim=True)
+        entropy = entropy / entropy.sum(dim=-1, keepdim=True)
+        if reshape:
+            entropy = entropy.reshape(L, B, H, W)
+        result["vidTLDR"] = entropy
+
+
+    return result
 
 
 
 def data2PIL(datas):
-    if type(datas) == torch.Tensor:
-        if len(datas.shape) == 2:
+    if type(datas) == torch.Tensor: # MAKE TO (..., H, W, 3)
+        if datas.shape[-1] == 3:
+            pils = datas
+        elif len(datas.shape) == 2:
             pils = datas.unsqueeze(-1).detach().cpu()
-        if len(datas.shape) == 3:
+        elif len(datas.shape) == 3:
             pils = datas.permute(1, 2, 0).detach().cpu()
         elif len(datas.shape) == 4:
             pils = datas.permute(0, 2, 3, 1).detach().cpu()
     elif type(datas) == np.ndarray:
-        if len(datas.shape) == 3: datas = np.expand_dims(datas, axis=0)
-        if datas.max() <= 1:
-            # image = Image.fromarray(image)                 # 0.32ms
-            pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)   # 0.29ms
-        else:
-            pils = datas
+        if len(datas.shape) == 2:
+            datas = np.expand_dims(datas, axis=-1)
+        # TODO NEED TO CHECK
+        # if datas.max() <= 1:
+        #     pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)  # 0.29ms
+        # else:
+        #     pils = datas
+
+        # image = Image.fromarray(image)                 # 0.32ms
+        pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)  # 0.29ms
+
     elif type(datas) == PIL.JpegImagePlugin.JpegImageFile \
          or type(datas) == PIL.Image.Image:
         pils = datas
     else:
         raise ValueError
     return pils
+
 
 def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
                 output_dir='./', save_name=None, show=True, fmt=1,
