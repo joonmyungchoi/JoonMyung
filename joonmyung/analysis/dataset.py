@@ -54,25 +54,23 @@ class JDataset():
         self.device = device
         self.data_path = data_path
         self.label_paths = sorted(getDir(os.path.join(self.data_path, self.data_type)))
-        self.img_paths   = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*"))) for label_path in self.label_paths]
+
         # self.img_paths   = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, "*", "*")))]
+        self.img_paths   = [[path, idx] for idx, label_path in enumerate(self.label_paths) for path in sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*")))]
 
 
     def __getitem__(self, idx):
-        if len(idx) == 2:
-            label_num, img_num = idx
+        if type(idx) == tuple:
+            idx, transform_type = idx
+        else:
             transform_type = self.transform_type
-        elif len(idx) == 3:
-            label_num, img_num, transform_type = idx
 
-        img_path = self.img_paths[label_num][img_num]
-        # img = PIL.Image.open(img_path)
+        [img_path, targets] = [idx, 0] if type(idx) == str else self.img_paths[idx]
 
-        img = default_loader(img_path)
+        sample = default_loader(img_path)
+        sample = self.transform[transform_type](sample)
 
-        data = self.transform[transform_type](img)
-
-        return data.unsqueeze(0).to(self.device), torch.tensor(label_num).to(self.device), self.label_name[int(label_num)]
+        return sample[None].to(self.device), torch.tensor(targets).to(self.device), self.label_name[targets]
 
     def getItems(self, indexs):
         ds, ls, lns = [], [], []
@@ -82,11 +80,6 @@ class JDataset():
             ls.append(l)
             lns.append(ln)
         return torch.cat(ds, dim=0), torch.stack(ls, dim=0), lns
-
-    def getItemPath(self, img_path):
-        img = PIL.Image.open(img_path)
-        data = self.transform(img)
-        return data.unsqueeze(0).to(self.device)
 
     def __len__(self):
         return

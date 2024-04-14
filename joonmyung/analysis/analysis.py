@@ -5,7 +5,7 @@ from joonmyung.analysis.model import JModel
 from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
 from joonmyung.meta_data import data2path
 from joonmyung.data import getTransform
-from joonmyung.metric import targetPred
+from joonmyung.metric import targetPred, accuracy
 from joonmyung.log import AverageMeter
 from joonmyung.utils import to_leaf, to_np
 from tqdm import tqdm
@@ -51,9 +51,8 @@ def anaModel(transformer_class):
     return VisionTransformer
 
 class Analysis:
-    def __init__(self, model, analysis = [0], activate = [True, False, False], detach=True, key_name=None, num_classes = 1000
+    def __init__(self, model, analysis = [0], activate = [True, False, False, False], detach=True, key_name=None, num_classes = 1000
                  , cls_start=0, cls_end=1, patch_start=1, patch_end=None
-                 , ks = 5
                  , amp_autocast=suppress, device="cuda"):
         # Section A. Model
         self.num_classes = num_classes
@@ -63,18 +62,17 @@ class Analysis:
         model.__class__ = model_
         model.analysis = analysis
         self.model = model
-        self.ks = ks
         self.detach = detach
 
         # Section B. Attention
         self.kwargs_roll = {"cls_start" : cls_start, "cls_end" : cls_end,
                             "patch_start" : patch_start, "patch_end" : patch_end}
 
-
         # Section C. Setting
         hooks = [{"name_i": 'attn_drop', "name_o": 'decoder', "fn_f": self.attn_forward, "fn_b": self.attn_backward},
                  {"name_i": 'qkv', "name_o": 'decoder', "fn_f": self.qkv_forward, "fn_b": self.qkv_backward},
-                 {"name_i": 'head', "name_o": 'decoder', "fn_f": self.head_forward, "fn_b": self.head_backward}]
+                 {"name_i": 'head', "name_o": 'decoder', "fn_f": self.head_forward, "fn_b": self.head_backward},
+                 {"name_i": 'patch_embed.norm', "name_o": 'decoder', "fn_f": self.input_forward, "fn_b": self.input_backward}]
         hooks = [h for h, a in zip(hooks, activate) if a]
 
 
@@ -86,20 +84,18 @@ class Analysis:
                 if hook["name_i"] in name and hook["name_o"] not in name:
                     module.register_forward_hook(hook["fn_f"])
                     module.register_backward_hook(hook["fn_b"])
+        self.resetInfo()
 
     def attn_forward(self, module, input, output):
-        # input  : 1 * (8, 3, 197, 197)
-        # output : (8, 3, 197, 197)
-        self.info["attn"]["f"].append(output.detach() if self.detach else output)
+        # input/output : 1 * (8, 3, 197, 197) / (8, 3, 197, 197)
+        self.info["attn"]["f"] = output.detach() if self.detach else output
 
     def attn_backward(self, module, grad_input, grad_output):
-        # input  : 1 * (8, 3, 197, 192)
-        # output : (8, 3, 197, 576)
-        self.info["attn"]["b"].insert(0, grad_input[0].detach() if self.detach else grad_input[0])
+        # input/output : 1 * (8, 3, 197, 192) / (8, 3, 197, 576)
+        self.info["attn"]["b"] = grad_input[0].detach() if self.detach else grad_input[0]
 
     def qkv_forward(self, module, input, output):
-        # input  : 1 * (8, 197, 192)
-        # output : (8, 197, 576)
+        # input/output : 1 * (8, 197, 192) / (8, 197, 576)
         self.info["qkv"]["f"].append(output.detach())
 
     def qkv_backward(self, module, grad_input, grad_output):
@@ -108,31 +104,44 @@ class Analysis:
 
     def head_forward(self, module, input, output):
         # input : 1 * (8(B), 192(D)), output : (8(B), 1000(C))
-        # TP = targetPred(output.detach(), self.targets.detach(), topk=self.ks)
-        TP = targetPred(to_leaf(output), to_leaf(self.targets), topk=self.ks)
-        self.info["head"]["TP"] = torch.cat([self.info["head"]["TP"], TP], dim=0) if "TP" in self.info["head"].keys() else TP
+        B = output.shape[0]
+        pred = targetPred(output, self.targets, topk=5)
+        self.info["head"]["TF"] += (pred[:, 0] == pred[:, 1])
+
+        acc1, acc5 = accuracy(output, self.targets, topk=(1,5))
+        self.info["head"]["acc1"].update(acc1.item(), n=B)
+        self.info["head"]["acc5"].update(acc5.item(), n=B)
 
     def head_backward(self, module, grad_input, grad_output):
         pass
 
+    def input_forward(self, module, input, output):
+        norm = F.normalize(output, dim=-1)
+        self.info["input"]["sim"] += (norm @ norm.transpose(-1, -2)).mean(dim=(-1, -2))
+
+    def input_backward(self, module, grad_input, grad_output):
+        pass
+
     def resetInfo(self):
-        self.info = {"attn": {"f": [], "b": []}, "qkv": {"f": [], "b": []},
-                     "head": {"acc1" : AverageMeter(),
-                              "acc5" : AverageMeter(),
-                              "pred" : None
+        self.info = {"attn" : {"f": None, "b": None},
+                     "qkv"  : {"f": None, "b": None},
+                     "head" : {"acc1" : AverageMeter(),
+                               "acc5" : AverageMeter(),
+                               "TF"   : [], "pred" : []},
+                     "input": {"sim" : []}
+                     }
 
-                              }}
-
-    def __call__(self, samples, index=None, **kwargs):
-        self.resetInfo()
+    def __call__(self, samples, targets = None, **kwargs):
         self.model.zero_grad()
         self.model.eval()
 
         if type(samples) == torch.Tensor:
+            self.targets = targets
             outputs = self.model(samples, **kwargs)
             return outputs
         else:
-            for sample, self.targets in tqdm(samples):
+            for sample, targets in tqdm(samples):
+                self.targets = targets
                 _ = self.model(sample)
             return False
 
@@ -217,9 +226,6 @@ if __name__ == '__main__':
             print(1)
 
             # roll = F.normalize(results["rollout"].reshape(12, 196), dim=-1)
-
-
-
 
             # datas_rollout = overlay(sample, rollout,   dataset_name)
             # drawImgPlot(datas_rollout, col=col)
