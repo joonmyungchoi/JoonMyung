@@ -11,7 +11,12 @@
 from timm.models.vision_transformer import Attention, Block, VisionTransformer
 from typing import List, Tuple, Union
 import torch
+from typing import Callable, Tuple
+import torch
+import math
 
+from models.SA.MHSA import MHSA
+from models.modules.blocks import Block_DEIT
 
 
 class ToMeBlock(Block):
@@ -33,7 +38,7 @@ class ToMeBlock(Block):
         x_attn, metric = self.attn(self.norm1(x), attn_size) # (256, 197, 768), (256, 197, 64)
         x = x + self._drop_path1(x_attn)
 
-        r = self._tome_info["r"].pop(0) # 32
+        r = self._tome_info["rs"].pop(0) # 32
         if r > 0:
             # Apply ToMe here
             merge, _ = bipartite_soft_matching(
@@ -100,7 +105,7 @@ def make_tome_class(transformer_class):
         """
 
         def forward(self, *args, **kwdargs) -> torch.Tensor:
-            self._tome_info["r"] = parse_r(len(self.blocks), self.r) # [32, 29, 26, 23, 20, 17, 14, 11, 8, 5, 2, 0]
+            if not self._tome_info["rs"]: self._tome_info["rs"] = parse_r(len(self.blocks), self._tome_info["r"])
             self._tome_info["size"] = None
             self._tome_info["source"] = None
 
@@ -110,45 +115,28 @@ def make_tome_class(transformer_class):
 
 
 def apply_patch(
-    model: VisionTransformer, trace_source: bool = False, prop_attn: bool = True
+    model: VisionTransformer, trace_source: bool = False, prop_attn: bool = True, r = 0
 ):
     ToMeVisionTransformer = make_tome_class(model.__class__)
 
     model.__class__ = ToMeVisionTransformer
-    model.r = 0
     model._tome_info = {
-        "r": model.r,
-        "size": None,
+        "r"     : r,
+        "rs"    : parse_r(len(model.blocks), r),
+        "size"  : None,
         "source": None,
-        "trace_source": trace_source,
-        "prop_attn": prop_attn,
-        "class_token": model.cls_token is not None,
-        "distill_token": False,
+        "trace_source" : trace_source,
+        "prop_attn"    : prop_attn,
+        "class_token"  : hasattr(model, "cls_token"),
+        "distill_token": hasattr(model, "dist_token"),
     }
 
-    if hasattr(model, "dist_token") and model.dist_token is not None:
-        model._tome_info["distill_token"] = True
-
     for module in model.modules():
-        if isinstance(module, Block):
+        if isinstance(module, Block) or isinstance(module, Block_DEIT):
             module.__class__ = ToMeBlock
             module._tome_info = model._tome_info
-        elif isinstance(module, Attention):
+        elif isinstance(module, Attention) or isinstance(module, MHSA):
             module.__class__ = ToMeAttention
-
-
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-# --------------------------------------------------------
-
-import math
-from typing import Callable, Tuple
-
-import torch
-
 
 def do_nothing(x, mode=None):
     return x
@@ -230,116 +218,6 @@ def bipartite_soft_matching(
         out[..., 1::2, :] = dst
         out.scatter_(dim=-2, index=(2 * unm_idx).expand(n, unm_len, c), src=unm)
         out.scatter_(dim=-2, index=(2 * src_idx).expand(n, r, c), src=src)
-
-        return out
-
-    return merge, unmerge
-
-
-def kth_bipartite_soft_matching(
-    metric: torch.Tensor, k: int
-) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with the two sets as (every kth element, the rest).
-    If n is the number of tokens, resulting number of tokens will be n // z.
-
-    Input size is [batch, tokens, channels].
-    z indicates the stride for the first set.
-    z = 2 is equivalent to regular bipartite_soft_matching with r = 0.5 * N
-    """
-    if k <= 1:
-        return do_nothing, do_nothing
-
-    def split(x):
-        t_rnd = (x.shape[1] // k) * k
-        x = x[:, :t_rnd, :].view(x.shape[0], -1, k, x.shape[2])
-        a, b = (
-            x[:, :, : (k - 1), :].contiguous().view(x.shape[0], -1, x.shape[-1]),
-            x[:, :, (k - 1), :],
-        )
-        return a, b
-
-    with torch.no_grad():
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = split(metric)
-        r = a.shape[1]
-        scores = a @ b.transpose(-1, -2)
-
-        _, dst_idx = scores.max(dim=-1)
-        dst_idx = dst_idx[..., None]
-
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = split(x)
-        n, _, c = src.shape
-        dst = dst.scatter_reduce(-2, dst_idx.expand(n, r, c), src, reduce=mode)
-
-        return dst
-
-    def unmerge(x: torch.Tensor) -> torch.Tensor:
-        n, _, c = x.shape
-        dst = x
-
-        src = dst.gather(dim=-2, index=dst_idx.expand(n, r, c)).to(x.dtype)
-
-        src = src.view(n, -1, (k - 1), c)
-        dst = dst.view(n, -1, 1, c)
-
-        out = torch.cat([src, dst], dim=-2)
-        out = out.contiguous().view(n, -1, c)
-
-        return out
-
-    return merge, unmerge
-
-
-def random_bipartite_soft_matching(
-    metric: torch.Tensor, r: int
-) -> Tuple[Callable, Callable]:
-    """
-    Applies ToMe with the two sets as (r chosen randomly, the rest).
-    Input size is [batch, tokens, channels].
-
-    This will reduce the number of tokens by r.
-    """
-    if r <= 0:
-        return do_nothing, do_nothing
-
-    with torch.no_grad():
-        B, N, _ = metric.shape
-        rand_idx = torch.rand(B, N, 1, device=metric.device).argsort(dim=1)
-
-        a_idx = rand_idx[:, :r, :]
-        b_idx = rand_idx[:, r:, :]
-
-        def split(x):
-            C = x.shape[-1]
-            a = x.gather(dim=1, index=a_idx.expand(B, r, C))
-            b = x.gather(dim=1, index=b_idx.expand(B, N - r, C))
-            return a, b
-
-        metric = metric / metric.norm(dim=-1, keepdim=True)
-        a, b = split(metric)
-        scores = a @ b.transpose(-1, -2)
-
-        _, dst_idx = scores.max(dim=-1)
-        dst_idx = dst_idx[..., None]
-
-    def merge(x: torch.Tensor, mode="mean") -> torch.Tensor:
-        src, dst = split(x)
-        C = src.shape[-1]
-        dst = dst.scatter_reduce(-2, dst_idx.expand(B, r, C), src, reduce=mode)
-
-        return dst
-
-    def unmerge(x: torch.Tensor) -> torch.Tensor:
-        C = x.shape[-1]
-        dst = x
-        src = dst.gather(dim=-2, index=dst_idx.expand(B, r, C))
-
-        out = torch.zeros(B, N, C, device=x.device, dtype=x.dtype)
-
-        out.scatter_(dim=-2, index=a_idx.expand(B, r, C), src=src)
-        out.scatter_(dim=-2, index=b_idx.expand(B, N - r, C), src=dst)
 
         return out
 

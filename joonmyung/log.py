@@ -49,14 +49,14 @@ class AverageMeter:
 
 class Logger():
     loggers = {}
-    def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None
+    def __init__(self, use_wandb=True, wandb_entity=None, wandb_project=None, wandb_name=None, wandb_tags=None
                  , wandb_watch=False, main_process=True, wandb_id=None, wandb_dir='./'
                  , args=None, model=False):
         self.use_wandb = use_wandb
         self.main_process = main_process
 
         if self.use_wandb and self.main_process:
-            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name
+            wandb.init(entity=wandb_entity, project=wandb_project, name=wandb_name, tags=wandb_tags
                        , save_code=True, resume="allow", id = wandb_id, dir=wandb_dir
                        , config=args, settings=wandb.Settings(code_dir="."))
 
@@ -122,7 +122,8 @@ class Logger():
     def save(self, model, args, name):
         if self.main_process:
             path = os.path.join(wandb.run.dir, f"{name}.pth")
-            torch.save({"model" : model, "args"  : args}, path)
+            torch.save({"model" : model, "args"  : args},
+                       path)
             wandb.save(path, wandb.run.dir)
 
 

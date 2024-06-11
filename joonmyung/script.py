@@ -86,6 +86,7 @@ class GPU_Worker():
         for gpu in gpus.split(','):
             self.runGPUs[int(gpu)] = p
 
+
 def Process_Worker(processes, gpuWorker, p = True):
     # TODO : 실험이 완전히 끝난 시간 체크할 필요가 존재함
     start = time.localtime()
@@ -98,6 +99,7 @@ def Process_Worker(processes, gpuWorker, p = True):
         # print("------ {}:GPU{}  {} ------".format(i + 1, gpus, prefix + process + suffix))
         p = subprocess.Popen(prefix + process + suffix, shell=True)
         gpuWorker.register_process(gpus, p)
+    gpuWorker.waitForEnd()
 
     end = time.localtime()
     print("------ End Running!!   : {} ------".format(time2str(end)))

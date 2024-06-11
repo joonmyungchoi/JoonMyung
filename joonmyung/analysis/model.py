@@ -1,7 +1,7 @@
 from collections import OrderedDict
-
 from joonmyung.utils import isDir
 from timm import create_model
+import models.deit
 import torch
 import os
 
@@ -11,7 +11,8 @@ class JModel():
         self.num_classes = num_classes
 
         if model_path:
-            self.model_path = os.path.join(model_path, "checkpoint_{}.pth")
+            self.model_path = os.path.join(model_path, "checkpoint.pth")
+
         if p and model_path:
             print("file list : ", sorted(os.listdir(model_path), reverse=True))
         self.device = device
@@ -27,6 +28,27 @@ class JModel():
             model = create_model(model_name, pretrained=True, num_classes=self.num_classes, in_chans=3, global_pool=None, scriptable=False)
         elif model_type == 1:
             model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True)
+        elif model_type == 2:
+            checkpoint = torch.load(self.model_path, map_location='cpu')
+            args = checkpoint['args']
+            model = create_model(
+                        args.model,
+                        pretrained=args.pretrained,
+                        num_classes=args.nb_classes,
+                        drop_rate=args.drop,
+                        drop_path_rate=args.drop_path,
+                        drop_block_rate=None,
+                        img_size=args.input_size,
+                        token_nums=args.token_nums,
+                        embed_type=args.embed_type,
+                        model_type=args.model_type
+                    ).to(self.device)
+            state_dict = []
+            for n, p in checkpoint['model'].items():
+                if "total_ops" not in n and "total_params" not in n:
+                    state_dict.append((n, p))
+            state_dict = dict(state_dict)
+            model.load_state_dict(state_dict)
         else:
             raise ValueError
         model.eval()

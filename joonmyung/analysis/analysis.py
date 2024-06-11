@@ -20,13 +20,15 @@ import cv2
 
 def anaModel(transformer_class):
     class VisionTransformer(transformer_class):
+        def has_parameter(self, parameter_name):
+            return parameter_name in self.__init__.__code__.co_varnames
+
         def forward_features(self, x):
             x = self.patch_embed(x)
-            cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-            if self.dist_token is None:
+            if self.has_parameter("cls_token"):
+                cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
                 x = torch.cat((cls_token, x), dim=1)
-            else:
-                x = torch.cat((cls_token, self.dist_token.expand(x.shape[0], -1, -1), x), dim=1)
+
 
 
             if self.analysis[0] == 1:   # PATCH
@@ -43,10 +45,13 @@ def anaModel(transformer_class):
 
             x = self.blocks(x)
             x = self.norm(x)
-            if self.dist_token is None:
+            if self.has_parameter("cls_token") and self.has_parameter("dist_token"):
+                return x[:, 0], x[:, 1]
+            elif self.has_parameter("cls_token"):
                 return self.pre_logits(x[:, 0])
             else:
-                return x[:, 0], x[:, 1]
+                return self.pre_logits(x.mean(dim=1))
+
 
     return VisionTransformer
 
