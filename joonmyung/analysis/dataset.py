@@ -81,6 +81,13 @@ class JDataset():
             lns.append(ln)
         return torch.cat(ds, dim=0), torch.stack(ls, dim=0), lns
 
+    def getIndex(self, c: list = [0, 1000], i: list = [0, 50]):
+        [c_s, c_e], [i_s, i_e] = c, i
+        c = torch.arange(c_s, c_e).reshape(-1, 1).repeat(1, i_e - i_s).reshape(-1)
+        i = torch.arange(i_s, i_e).reshape(1, -1).repeat(c_e - c_s, 1).reshape(-1)
+        c_i = torch.stack([c, i], dim=-1)
+        return c_i
+
     def __len__(self):
         return
 

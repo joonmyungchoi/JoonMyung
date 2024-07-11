@@ -3,7 +3,7 @@ from setuptools import find_packages
 
 setuptools.setup(
     name="joonmyung",
-    version="1.5.3",
+    version="1.5.6",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",
@@ -23,7 +23,8 @@ setuptools.setup(
 # git add .
 # git commit
 # git push
-# rm -rf ./*.egg-info ./dist/*
 
-# python setup.py sdist; python -m twine upload dist/*
+# rm -rf ./*.egg-info ./dist/*
+# python3 setup.py sdist; python -m twine upload dist/*
+
 # ID:JoonmyungChoi

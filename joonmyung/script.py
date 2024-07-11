@@ -3,6 +3,7 @@ from tqdm import tqdm
 import subprocess
 import time
 import pynvml
+import requests
 import datetime
 
 class GPU_Worker():
@@ -86,6 +87,23 @@ class GPU_Worker():
         for gpu in gpus.split(','):
             self.runGPUs[int(gpu)] = p
 
+    def waitForEnd(self):
+        count = 0
+        while self.check_process():
+            if self.p:
+                count += 1
+                print(f"{count}  |  CURRENT RUNNING GPUS : {list(self.runGPUs.keys())}")
+            time.sleep(self.waitTime)
+        return
+
+    def message(self):
+        url = "https://hooks.slack.com/services/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"
+        payload = {"text": "Experiments Finished"}
+        headers = {'Content-type': 'application/json'}
+
+        response = requests.post(url, json=payload, headers=headers)
+
+        return response
 
 def Process_Worker(processes, gpuWorker, p = True):
     # TODO : 실험이 완전히 끝난 시간 체크할 필요가 존재함
@@ -100,6 +118,7 @@ def Process_Worker(processes, gpuWorker, p = True):
         p = subprocess.Popen(prefix + process + suffix, shell=True)
         gpuWorker.register_process(gpus, p)
     gpuWorker.waitForEnd()
+    gpuWorker.message()
 
     end = time.localtime()
     print("------ End Running!!   : {} ------".format(time2str(end)))

@@ -120,10 +120,9 @@ class Logger():
         wandb.finish()
 
     def save(self, model, args, name):
-        if self.main_process:
+        if self.main_process and self.use_wandb:
             path = os.path.join(wandb.run.dir, f"{name}.pth")
-            torch.save({"model" : model, "args"  : args},
-                       path)
+            torch.save({"model" : model, "args"  : args}, path)
             wandb.save(path, wandb.run.dir)
 
 
