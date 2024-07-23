@@ -1,6 +1,3 @@
-
-
-
 def get_update_param(model):
     return [k for k, v in model.named_parameters() if v.requires_grad == True]
 

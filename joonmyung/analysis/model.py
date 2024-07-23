@@ -1,7 +1,5 @@
 from collections import OrderedDict
-from joonmyung.utils import isDir
 from timm import create_model
-import models.deit
 import torch
 import os
 

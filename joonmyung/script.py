@@ -96,16 +96,16 @@ class GPU_Worker():
             time.sleep(self.waitTime)
         return
 
-    def message(self):
+    def message(self, text):
         url = "https://hooks.slack.com/services/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"
-        payload = {"text": "Experiments Finished"}
+        payload = {"text": text}
         headers = {'Content-type': 'application/json'}
 
         response = requests.post(url, json=payload, headers=headers)
 
         return response
 
-def Process_Worker(processes, gpuWorker, p = True):
+def Process_Worker(processes, gpuWorker, id = "", p = True):
     # TODO : 실험이 완전히 끝난 시간 체크할 필요가 존재함
     start = time.localtime()
     print("------ Start Running!! : {} ------".format(time2str(start)))
@@ -118,12 +118,14 @@ def Process_Worker(processes, gpuWorker, p = True):
         p = subprocess.Popen(prefix + process + suffix, shell=True)
         gpuWorker.register_process(gpus, p)
     gpuWorker.waitForEnd()
-    gpuWorker.message()
-
     end = time.localtime()
     print("------ End Running!!   : {} ------".format(time2str(end)))
     training_time = datetime.timedelta(seconds=time.mktime(end) - time.mktime(start))
     print(f"Time 1/all :  {training_time}/{training_time / len(processes)} ------")
+    gpuWorker.message(f"Experiments Finished" 
+                      f"{id} : "
+                      f"Time 1/all : {training_time}/{training_time / len(processes)}"
+                      )
 
 
 

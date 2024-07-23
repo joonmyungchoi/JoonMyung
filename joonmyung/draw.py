@@ -13,9 +13,11 @@ import pandas as pd
 import numpy as np
 import torch.optim
 import torch
+import copy
 import cv2
 import PIL
 import os
+
 
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
@@ -341,7 +343,6 @@ def overlay(imgs, attnsL, dataset="imagenet"):
             results.append(result)
     return results
 
-import copy
 def unNormalize(image, dataset="imagenet"):
     # images : (B, C, H, W)
     if dataset == "imagenet":

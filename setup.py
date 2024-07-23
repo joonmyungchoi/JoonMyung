@@ -3,7 +3,7 @@ from setuptools import find_packages
 
 setuptools.setup(
     name="joonmyung",
-    version="1.5.6",
+    version="1.5.9",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",

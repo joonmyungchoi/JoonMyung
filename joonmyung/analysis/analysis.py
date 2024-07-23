@@ -1,20 +1,14 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.analysis.model import JModel
-from joonmyung.draw import saliency, overlay, drawImgPlot, drawHeatmap, unNormalize
+from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize
 from joonmyung.meta_data import data2path
-from joonmyung.data import getTransform
 from joonmyung.metric import targetPred, accuracy
 from joonmyung.log import AverageMeter
-from joonmyung.utils import to_leaf, to_np
 from tqdm import tqdm
 from contextlib import suppress
-import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
 import torch
-import PIL
 import cv2
 
 

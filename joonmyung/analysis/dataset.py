@@ -1,13 +1,12 @@
-from torchvision.transforms import InterpolationMode
 from joonmyung.meta_data.label import imnet_label, cifar_label
 from torchvision.datasets.folder import default_loader
+from torchvision.transforms import InterpolationMode
 from timm.data import create_dataset, create_loader
 from torchvision import transforms
 from joonmyung.utils import getDir
 import torch
 import copy
 import glob
-import PIL
 import os
 
 
@@ -34,7 +33,7 @@ class JDataset():
                     }
     }
 
-    def __init__(self, data_path="/hub_data1/joonmyung/data", dataset="imagenet", train=False, transform_type = 0,
+    def __init__(self, data_path="/hub_data1/joonmyung/data/imagenet", dataset="imagenet", train=False, transform_type = 0,
                  distribution = None, size = None, device="cuda"):
         self.dataset = dataset.lower()
         setting = self.settings[self.dataset]
@@ -56,21 +55,18 @@ class JDataset():
         self.label_paths = sorted(getDir(os.path.join(self.data_path, self.data_type)))
 
         # self.img_paths   = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, "*", "*")))]
-        self.img_paths   = [[path, idx] for idx, label_path in enumerate(self.label_paths) for path in sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*")))]
+        # self.img_paths   = [[path, idx] for idx, label_path in enumerate(self.label_paths) for path in sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*")))]
+        self.img_paths = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*"))) for label_path in self.label_paths]
 
 
     def __getitem__(self, idx):
-        if type(idx) == tuple:
-            idx, transform_type = idx
-        else:
-            transform_type = self.transform_type
-
-        [img_path, targets] = [idx, 0] if type(idx) == str else self.img_paths[idx]
+        label_num, img_num = idx
+        img_path = self.img_paths[label_num][img_num]
 
         sample = default_loader(img_path)
-        sample = self.transform[transform_type](sample)
+        sample = self.transform[self.transform_type](sample)
 
-        return sample[None].to(self.device), torch.tensor(targets).to(self.device), self.label_name[targets]
+        return sample[None].to(self.device), torch.tensor(label_num).to(self.device), self.label_name[int(label_num)]
 
     def getItems(self, indexs):
         ds, ls, lns = [], [], []
@@ -80,16 +76,6 @@ class JDataset():
             ls.append(l)
             lns.append(ln)
         return torch.cat(ds, dim=0), torch.stack(ls, dim=0), lns
-
-    def getIndex(self, c: list = [0, 1000], i: list = [0, 50]):
-        [c_s, c_e], [i_s, i_e] = c, i
-        c = torch.arange(c_s, c_e).reshape(-1, 1).repeat(1, i_e - i_s).reshape(-1)
-        i = torch.arange(i_s, i_e).reshape(1, -1).repeat(c_e - c_s, 1).reshape(-1)
-        c_i = torch.stack([c, i], dim=-1)
-        return c_i
-
-    def __len__(self):
-        return
 
     def getAllItems(self, batch_size=32):
         dataset = create_dataset(
@@ -111,6 +97,17 @@ class JDataset():
             tf_preprocessing=False)
         return loader
 
+    def getIndex(self, c: list = [0, 1000], i: list = [0, 50]):
+        [c_s, c_e], [i_s, i_e] = c, i
+        c = torch.arange(c_s, c_e).reshape(-1, 1).repeat(1, i_e - i_s).reshape(-1)
+        i = torch.arange(i_s, i_e).reshape(1, -1).repeat(c_e - c_s, 1).reshape(-1)
+        c_i = torch.stack([c, i], dim=-1)
+        return c_i
+
+    def __len__(self):
+        return
+
+
     def validation(self, data):
         return data.lower()
 
@@ -127,9 +124,9 @@ class JDataset():
         return result
 
 if __name__ == "__main__":
-    root_path = "/hub_data1/joonmyung/data"
+    root_path = "/hub_data1/joonmyung/data/imagenet"
     dataset = "imagenet"
-    dataset = JDataset(root_path, dataset, train=True, )
-    d, l, l_n  = dataset[0, 1]
-    samples = dataset.getitems([[0,1], [0,2], [0,3]])
+    dataset = JDataset(root_path, dataset, train=False)
+    d, l, l_n  = dataset[[10, 3]]
+    # samples = dataset.getitems([[0,1], [0,2], [0,3]])
     print(1)

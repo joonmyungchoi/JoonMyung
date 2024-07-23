@@ -1,3 +1,5 @@
+from torchvision.transforms import InterpolationMode
+from torchvision import transforms
 import torch
 
 def rangeBlock(block, vmin=0, vmax=5):
@@ -26,8 +28,6 @@ def normalization(t, type = 0):
     elif type == 1:
         return t / t.min()
 
-from torchvision import transforms
-from torchvision.transforms import InterpolationMode
 
 def getTransform(train = False, totensor = False, resize=True):
 
