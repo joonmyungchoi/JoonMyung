@@ -14,16 +14,11 @@ import cv2
 
 def anaModel(transformer_class):
     class VisionTransformer(transformer_class):
-        def has_parameter(self, parameter_name):
-            return parameter_name in self.__init__.__code__.co_varnames
-
         def forward_features(self, x):
             x = self.patch_embed(x)
-            if self.has_parameter("cls_token"):
+            if hasattr(self, "cls_token"):
                 cls_token = self.cls_token.expand(x.shape[0], -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
                 x = torch.cat((cls_token, x), dim=1)
-
-
 
             if self.analysis[0] == 1:   # PATCH
                 x = x # (8, 197, 192)
@@ -39,27 +34,27 @@ def anaModel(transformer_class):
 
             x = self.blocks(x)
             x = self.norm(x)
-            if self.has_parameter("cls_token") and self.has_parameter("dist_token"):
+            if hasattr(self, "cls_token") and hasattr(self, "cls_token"):
                 return x[:, 0], x[:, 1]
-            elif self.has_parameter("cls_token"):
+            elif hasattr(self, "cls_token"):
                 return self.pre_logits(x[:, 0])
             else:
                 return self.pre_logits(x.mean(dim=1))
-
 
     return VisionTransformer
 
 class Analysis:
     def __init__(self, model, analysis = [0], activate = [True, False, False, False], detach=True, key_name=None, num_classes = 1000
-                 , cls_start=0, cls_end=1, patch_start=1, patch_end=None
+                 , cls_start=0, cls_end=1, patch_start=1, patch_end=None, wrapping=False
                  , amp_autocast=suppress, device="cuda"):
         # Section A. Model
         self.num_classes = num_classes
         self.key_name = key_name
+        if wrapping:
+            model_ = anaModel(model.__class__)
+            model.__class__ = model_
+            model.analysis = analysis
 
-        model_ = anaModel(model.__class__)
-        model.__class__ = model_
-        model.analysis = analysis
         self.model = model
         self.detach = detach
 

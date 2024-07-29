@@ -97,7 +97,7 @@ class GPU_Worker():
         return
 
     def message(self, text):
-        url = "https://hooks.slack.com/services/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"
+        url = "https://hooks.slack.com/services/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"
         payload = {"text": text}
         headers = {'Content-type': 'application/json'}
 
