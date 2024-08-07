@@ -67,8 +67,7 @@ class Analysis:
                  {"name_i": 'qkv', "name_o": 'decoder', "fn_f": self.qkv_forward, "fn_b": self.qkv_backward},
                  {"name_i": 'head', "name_o": 'decoder', "fn_f": self.head_forward, "fn_b": self.head_backward},
                  {"name_i": 'patch_embed.norm', "name_o": 'decoder', "fn_f": self.input_forward, "fn_b": self.input_backward}]
-        hooks = [h for h, a in zip(hooks, activate) if a]
-
+        self.activate = activate
 
         self.amp_autocast = amp_autocast
         self.device       = device
@@ -82,15 +81,15 @@ class Analysis:
 
     def attn_forward(self, module, input, output):
         # input/output : 1 * (8, 3, 197, 197) / (8, 3, 197, 197)
-        self.info["attn"]["f"] = output.detach() if self.detach else output
+        if self.activate[0]: self.info["attn"]["f"] = output.detach() if self.detach else output
 
     def attn_backward(self, module, grad_input, grad_output):
         # input/output : 1 * (8, 3, 197, 192) / (8, 3, 197, 576)
-        self.info["attn"]["b"] = grad_input[0].detach() if self.detach else grad_input[0]
+        if self.activate[0]: self.info["attn"]["b"] = grad_input[0].detach() if self.detach else grad_input[0]
 
     def qkv_forward(self, module, input, output):
         # input/output : 1 * (8, 197, 192) / (8, 197, 576)
-        self.info["qkv"]["f"].append(output.detach())
+        if self.activate[1]: self.info["qkv"]["f"].append(output.detach())
 
     def qkv_backward(self, module, grad_input, grad_output):
         # self.info["qkv"]["b"].append(grad_input[0].detach())
@@ -98,20 +97,22 @@ class Analysis:
 
     def head_forward(self, module, input, output):
         # input : 1 * (8(B), 192(D)), output : (8(B), 1000(C))
-        B = output.shape[0]
-        pred = targetPred(output, self.targets, topk=5)
-        self.info["head"]["TF"] += (pred[:, 0] == pred[:, 1])
+        if self.activate[2]:
+            B = output.shape[0]
+            pred = targetPred(output, self.targets, topk=5)
+            self.info["head"]["TF"] += (pred[:, 0] == pred[:, 1])
 
-        acc1, acc5 = accuracy(output, self.targets, topk=(1,5))
-        self.info["head"]["acc1"].update(acc1.item(), n=B)
-        self.info["head"]["acc5"].update(acc5.item(), n=B)
+            acc1, acc5 = accuracy(output, self.targets, topk=(1,5))
+            self.info["head"]["acc1"].update(acc1.item(), n=B)
+            self.info["head"]["acc5"].update(acc5.item(), n=B)
 
     def head_backward(self, module, grad_input, grad_output):
         pass
 
     def input_forward(self, module, input, output):
-        norm = F.normalize(output, dim=-1)
-        self.info["input"]["sim"] += (norm @ norm.transpose(-1, -2)).mean(dim=(-1, -2))
+        if self.activate[3]:
+            norm = F.normalize(output, dim=-1)
+            self.info["input"]["sim"] += (norm @ norm.transpose(-1, -2)).mean(dim=(-1, -2))
 
     def input_backward(self, module, grad_input, grad_output):
         pass
