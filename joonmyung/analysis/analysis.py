@@ -81,19 +81,19 @@ class Analysis:
 
     def attn_forward(self, module, input, output):
         # input/output : 1 * (8, 3, 197, 197) / (8, 3, 197, 197)
-        if self.activate[0]: self.info["attn"]["f"] = output.detach() if self.detach else output
+        if self.activate[0]: self.info["attn"]["f"].append(output.detach())
 
     def attn_backward(self, module, grad_input, grad_output):
         # input/output : 1 * (8, 3, 197, 192) / (8, 3, 197, 576)
-        if self.activate[0]: self.info["attn"]["b"] = grad_input[0].detach() if self.detach else grad_input[0]
+        if self.activate[0]: self.info["attn"]["b"].append(grad_input[0].detach())
 
     def qkv_forward(self, module, input, output):
         # input/output : 1 * (8, 197, 192) / (8, 197, 576)
         if self.activate[1]: self.info["qkv"]["f"].append(output.detach())
 
     def qkv_backward(self, module, grad_input, grad_output):
-        # self.info["qkv"]["b"].append(grad_input[0].detach())
-       pass
+        self.info["qkv"]["b"].append(grad_input[0].detach())
+       # pass
 
     def head_forward(self, module, input, output):
         # input : 1 * (8(B), 192(D)), output : (8(B), 1000(C))
@@ -118,8 +118,8 @@ class Analysis:
         pass
 
     def resetInfo(self):
-        self.info = {"attn" : {"f": None, "b": None},
-                     "qkv"  : {"f": None, "b": None},
+        self.info = {"attn" : {"f": [], "b": []},
+                     "qkv"  : {"f": [], "b": []},
                      "head" : {"acc1" : AverageMeter(),
                                "acc5" : AverageMeter(),
                                "TF"   : [], "pred" : []},
@@ -127,6 +127,7 @@ class Analysis:
                      }
 
     def __call__(self, samples, targets = None, **kwargs):
+        self.resetInfo()
         self.model.zero_grad()
         self.model.eval()
 
@@ -164,7 +165,7 @@ if __name__ == '__main__':
     # Section A. Data
     dataset_name, device, amp_autocast, debug = "imagenet", 'cuda', torch.cuda.amp.autocast, True
     data_path, num_classes, _, _ = data2path(dataset_name)
-    view, activate = [False, True, False, False, True], [True, False, False]
+    view, activate = [False, True, False, False, True], [True, False, False, False]
         # VIEW     : IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT
         # ACTIVATE : ATTN, QKV, HEAD
     analysis = [0] # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
@@ -174,8 +175,9 @@ if __name__ == '__main__':
     data_idxs = [[1, 0]]
 
     # Section B. Model
-    model_number, model_name = 0, "deit_tiny_patch16_224" # deit, vit | tiny, small, base
+    # model_number, model_name = 0, "deit_tiny_patch16_224" # deit, vit | tiny, small, base
     # model_number, model_name = 1, "deit_tiny_patch16_224"
+    model_number, model_name = 2, "ViT-B/16"
 
     # Section C. Setting
     modelMaker = JModel(num_classes, device=device)
