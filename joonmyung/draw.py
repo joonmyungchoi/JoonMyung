@@ -241,28 +241,22 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
 
 
 
+
 def data2PIL(datas):
-    if type(datas) == torch.Tensor: # MAKE TO (..., H, W, 3)
-        if datas.shape[-1] == 3:
-            pils = datas
-        elif len(datas.shape) == 2:
+    if type(datas) == torch.Tensor:
+        if len(datas.shape) == 2:
             pils = datas.unsqueeze(-1).detach().cpu()
-        elif len(datas.shape) == 3:
+        if len(datas.shape) == 3:
             pils = datas.permute(1, 2, 0).detach().cpu()
         elif len(datas.shape) == 4:
             pils = datas.permute(0, 2, 3, 1).detach().cpu()
     elif type(datas) == np.ndarray:
-        if len(datas.shape) == 2:
-            datas = np.expand_dims(datas, axis=-1)
-        # TODO NEED TO CHECK
-        # if datas.max() <= 1:
-        #     pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)  # 0.29ms
-        # else:
-        #     pils = datas
-
-        # image = Image.fromarray(image)                 # 0.32ms
-        pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)  # 0.29ms
-
+        if len(datas.shape) == 3: datas = np.expand_dims(datas, axis=0)
+        if datas.max() <= 1:
+            # image = Image.fromarray(image)                 # 0.32ms
+            pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)   # 0.29ms
+        else:
+            pils = datas
     elif type(datas) == PIL.JpegImagePlugin.JpegImageFile \
          or type(datas) == PIL.Image.Image:
         pils = datas
@@ -271,7 +265,7 @@ def data2PIL(datas):
     return pils
 
 
-def drawImgPlot(datas:list, col=1, title:str=None, columns=None, showRows:list=None,
+def drawImgPlot(datas, col=1, title:str=None, columns=None, showRows:list=None,
                 output_dir='./', save_name=None, show=True, fmt=1,
                 vis_x = False, vis_y = False, border=False, p=False):
     if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]

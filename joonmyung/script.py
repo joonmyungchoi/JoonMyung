@@ -59,7 +59,7 @@ class GPU_Worker():
 
             if len(availGPUs) < self.need_gpu:
                 if self.p:
-                    print(f"{count}  |  CURRENT RUNNING GPUS : {list(self.runGPUs.keys())}")
+                    print(f"{count} | AVAIL/NEED/RUNNING GPUS : {list(availGPUs)}/{self.need_gpu}/{list(self.runGPUs.keys())}")
                 time.sleep(self.waitTime)
             else:
                 break
@@ -97,7 +97,7 @@ class GPU_Worker():
         return
 
     def message(self, text):
-        url = "https://hooks.slack.com/services/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"
+        url = "https://hooks.slack.com/services/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"
         payload = {"text": text}
         headers = {'Content-type': 'application/json'}
 
@@ -105,7 +105,7 @@ class GPU_Worker():
 
         return response
 
-def Process_Worker(processes, gpuWorker, id = "", p = True):
+def Process_Worker(processes, gpuWorker, m = None, p = False):
     # TODO : 실험이 완전히 끝난 시간 체크할 필요가 존재함
     start = time.localtime()
     print("------ Start Running!! : {} ------".format(time2str(start)))
@@ -114,21 +114,20 @@ def Process_Worker(processes, gpuWorker, id = "", p = True):
         gpus = gpuWorker.getGPU()
         prefix = f"CUDA_VISIBLE_DEVICES={gpus} nohup sh -c \'"
         suffix = f"\' > {i+1}:gpu{gpus}.log 2>&1 "
-        # print("------ {}:GPU{}  {} ------".format(i + 1, gpus, prefix + process + suffix))
-        p = subprocess.Popen(prefix + process + suffix, shell=True)
-        gpuWorker.register_process(gpus, p)
+        if p:
+            print("------ {}:GPU{}  {} ------".format(i + 1, gpus, prefix + process + suffix))
+        session = subprocess.Popen(prefix + process + suffix, shell=True)
+        gpuWorker.register_process(gpus, session)
     gpuWorker.waitForEnd()
     end = time.localtime()
+
     print("------ End Running!!   : {} ------".format(time2str(end)))
     training_time = datetime.timedelta(seconds=time.mktime(end) - time.mktime(start))
     print(f"Time 1/all :  {training_time}/{training_time / len(processes)} ------")
-    gpuWorker.message(f"Experiments Finished" 
-                      f"{id} : {server}"
-                      f"Time 1/all : {training_time}/{training_time / len(processes)}"
-                      )
-
-
-
+    if m:
+        gpuWorker.message(f"Experiments Finished {m} : "  
+                          f"Time 1/all : {training_time}/{training_time / len(processes)}"
+                          )
 
 
 if __name__ == '__main__':
@@ -136,3 +135,9 @@ if __name__ == '__main__':
     processes = [1,2,3,4,5]
     gpuWorker = GPU_Worker([0,1,2,3], 30, 120, checkType=1, utilRatio=50, need_gpu=4)
     Process_Worker(processes, gpuWorker)
+
+
+
+# 1호기 : https://hooks.slack.com/services/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
+# 2호기 : https://hooks.slack.com/services/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
+# 3호기 : https://hooks.slack.com/services/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
