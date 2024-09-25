@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from timm import create_model
+from clip import clip
 import torch
 import os
 
@@ -27,6 +28,12 @@ class JModel():
         elif model_type == 1:
             model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True)
         elif model_type == 2:
+            url = clip._MODELS[model_name]
+            model_path = clip._download(url)
+            model = torch.jit.load(model_path, map_location="cpu").eval()
+            model = clip.build_model(model.state_dict())
+
+        elif model_type == 3:
             checkpoint = torch.load(self.model_path, map_location='cpu')
             args = checkpoint['args']
             model = create_model(

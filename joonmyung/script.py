@@ -97,7 +97,7 @@ class GPU_Worker():
         return
 
     def message(self, text):
-        url = "https://hooks.slack.com/services/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"
+        url = "https://hooks.slack.com/services/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"
         payload = {"text": text}
         headers = {'Content-type': 'application/json'}
 
@@ -123,7 +123,7 @@ def Process_Worker(processes, gpuWorker, id = "", p = True):
     training_time = datetime.timedelta(seconds=time.mktime(end) - time.mktime(start))
     print(f"Time 1/all :  {training_time}/{training_time / len(processes)} ------")
     gpuWorker.message(f"Experiments Finished" 
-                      f"{id} : "
+                      f"{id} : {server}"
                       f"Time 1/all : {training_time}/{training_time / len(processes)}"
                       )
 
