@@ -1,19 +1,47 @@
+
 from collections import OrderedDict
+
+import glob
+from pprint import pprint
+
 from timm import create_model
 from clip import clip
 import torch
 import os
 
+from clip import clip
+class ZeroShotInference():
+    def __init__(self, model, classnames,
+                 prompt = "a photo of a {}.", device = "cuda"):
+
+        prompts = [prompt.format(c.replace("_", " ")) for c in classnames]
+        print(f"Prompts: {prompts}")
+        prompts = torch.cat([clip.tokenize(p) for p in prompts])
+        prompts = prompts.to(device)
+
+        with torch.no_grad():
+            text_features = model.encode_text(prompts)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        self.text_features = text_features
+        self.model = model
+
+    def __call__(self, image):
+        image_features = self.model.encode_image(image)
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        logit_scale = self.model.logit_scale.exp()
+        logits = logit_scale * image_features @ self.text_features.t()
+        return logits
+
+
 class JModel():
-    def __init__(self, num_classes = None, model_path= None, device="cuda", p=False):
-        # Pretrained_Model
+    def __init__(self, num_classes = None, root_path= None, device="cuda"):
         self.num_classes = num_classes
 
-        if model_path:
-            self.model_path = os.path.join(model_path, "checkpoint.pth")
+        self.root_path = root_path
+        self.model_path = glob.glob(os.path.join(root_path, "*.pth"))
+        pprint(self.model_path)
 
-        if p and model_path:
-            print("file list : ", sorted(os.listdir(model_path), reverse=True))
         self.device = device
 
     def load_state_dict(self, model, state_dict):
@@ -21,20 +49,22 @@ class JModel():
         model.load_state_dict(state_dict)
 
 
-    def getModel(self, model_type=0, model_name ="deit_tiny", **kwargs):
+    def getModel(self, model_type=0, model_name ="deit_tiny"):
 
         if model_type == 0:
             model = create_model(model_name, pretrained=True, num_classes=self.num_classes, in_chans=3, global_pool=None, scriptable=False)
+
         elif model_type == 1:
             model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True)
+
         elif model_type == 2:
             url = clip._MODELS[model_name]
-            model_path = clip._download(url)
-            model = torch.jit.load(model_path, map_location="cpu").eval()
+            model_path = clip._download(url, self.root_path)
+            model = torch.jit.load(model_path, map_location="cpu")
             model = clip.build_model(model.state_dict())
 
         elif model_type == 3:
-            checkpoint = torch.load(self.model_path, map_location='cpu')
+            checkpoint = torch.load(self.root_path, map_location='cpu')
             args = checkpoint['args']
             model = create_model(
                         args.model,
@@ -56,7 +86,7 @@ class JModel():
             model.load_state_dict(state_dict)
         else:
             raise ValueError
-        model.eval()
 
+        model.eval()
         return model.to(self.device)
 
