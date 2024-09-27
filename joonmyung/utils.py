@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import torch.distributed as dist
 from pathlib import Path
 import numpy as np
@@ -107,3 +109,18 @@ def getDir(path):
 
 def isDir(path):
     return os.path.exists(path)
+
+
+
+def read_classnames(text_file):
+    """Return a dictionary containing
+    key-value pairs of <folder name>: <class name>.
+    """
+    classnames = []
+    with open(text_file, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.strip().split(" ")
+            classname = " ".join(line[1:])
+            classnames.append(classname)
+    return classnames

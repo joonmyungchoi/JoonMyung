@@ -5,11 +5,10 @@ import glob
 from pprint import pprint
 
 from timm import create_model
-from clip import clip
 import torch
 import os
 
-from clip import clip
+from joonmyung.clip import clip
 class ZeroShotInference():
     def __init__(self, model, classnames,
                  prompt = "a photo of a {}.", device = "cuda"):
@@ -50,19 +49,13 @@ class JModel():
 
 
     def getModel(self, model_type=0, model_name ="deit_tiny"):
-
+        preprocess = None
         if model_type == 0:
             model = create_model(model_name, pretrained=True, num_classes=self.num_classes, in_chans=3, global_pool=None, scriptable=False)
-
         elif model_type == 1:
             model = torch.hub.load('facebookresearch/deit:main', model_name, pretrained=True)
-
         elif model_type == 2:
-            url = clip._MODELS[model_name]
-            model_path = clip._download(url, self.root_path)
-            model = torch.jit.load(model_path, map_location="cpu")
-            model = clip.build_model(model.state_dict())
-
+            model, preprocess = clip.load(model_name)
         elif model_type == 3:
             checkpoint = torch.load(self.root_path, map_location='cpu')
             args = checkpoint['args']
@@ -88,5 +81,5 @@ class JModel():
             raise ValueError
 
         model.eval()
-        return model.to(self.device)
+        return model.to(self.device), preprocess
 

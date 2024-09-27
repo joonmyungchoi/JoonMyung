@@ -4,6 +4,7 @@ from torchvision.transforms import InterpolationMode
 from timm.data import create_dataset, create_loader
 from torchvision import transforms
 from joonmyung.utils import getDir
+from torch.utils.data import DataLoader
 import torch
 import copy
 import glob
@@ -16,12 +17,12 @@ import os
 # cifar2png cifar10  ./cifar10
 
 class JDataset():
-    # transforms.Resize(int((256 / 224) * input_size), interpolation=InterpolationMode.BICUBIC),
     settings = {"imagenet" : {
                     "num_classes"   : 1000,
                     "data_types"    : ["val", "train"],
                     "label_name"    : imnet_label,
-                    "distributions" : {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
+                    # "distributions" : {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
+                    "distributions" : {"mean": [0.48145466, 0.4578275, 0.40821073], "std": [0.26862954, 0.26130258, 0.27577711]},
                     "size": (224, 224)
                     },
                 "cifar100" : {
@@ -46,7 +47,7 @@ class JDataset():
         self.transform = [
                 transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
                 transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
-                transforms.Compose([transforms.Resize(size, interpolation=InterpolationMode.BICUBIC), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
+                transforms.Compose([transforms.Resize(224, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
                 transforms.Compose([transforms.ToTensor()])
         ]
 
@@ -81,20 +82,13 @@ class JDataset():
         dataset = create_dataset(
             root=self.data_path, name="IMNET"
             , split='validation', is_training=False
-            , load_bytes=False, class_map='')
-
-        loader = create_loader(
-            dataset,
-            input_size=(3, 224, 224),
-            batch_size=batch_size,
-            use_prefetcher=True,
-            interpolation='bicubic',
-            mean = self.distribution["mean"],
-            std  = self.distribution["std"],
-            num_workers=8,
-            crop_pct=0.9,
-            pin_memory=False,
-            tf_preprocessing=False)
+            , transform=self.transform[self.transform_type]
+            )
+        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                             shuffle=False,
+                                             num_workers=12,
+                                             collate_fn=torch.utils.data.dataloader.default_collate,
+                                             drop_last=False)
         return loader
 
     def getIndex(self, c: list = [0, 1000], i: list = [0, 50]):
