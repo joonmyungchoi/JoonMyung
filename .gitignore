@@ -1,6 +1,7 @@
 .idea/**
 joonmyung/.idea/**
-playground/**
+
+#playground/**
 99_backup/**
 algorithm/**
 

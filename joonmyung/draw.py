@@ -1,8 +1,10 @@
 from torchvision.transforms.functional import to_pil_image
-from joonmyung.utils import to_leaf, to_tensor
+from joonmyung.utils import to_leaf, to_tensor, to_np
 from joonmyung.data import normalization
+from scipy.ndimage import binary_erosion
 from matplotlib import pyplot as plt
 import torch.utils.data.distributed
+import torch.nn.functional as F
 import matplotlib as mpl
 import torch.nn.parallel
 import torch.utils.data
@@ -12,6 +14,7 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import torch.optim
+import random
 import torch
 import copy
 import cv2
@@ -358,3 +361,66 @@ def show_mask_on_image(img, mask):
     cam = heatmap + np.float32(img)
     cam = cam / np.max(cam)
     return np.uint8(255 * cam)
+
+def generate_colormap(N: int, seed: int = 0):
+    """Generates a equidistant colormap with N elements."""
+    random.seed(seed)
+
+    def generate_color():
+        return (random.random(), random.random(), random.random())
+
+    return [generate_color() for _ in range(N)]
+
+
+def make_visualization(
+        samples, source: torch.Tensor, patch_size: int = 16, token_nums: int = 1,
+        min_merge_nums=0, merge=True, prune=False, unmerge=False
+) -> Image:
+    imgs = to_np(unNormalize(samples.reshape(-1, 3, 224, 224), "imagenet"))  # (4, 3, 224, 224)
+
+    Fr, C, H, W = imgs.shape  # (4, 3, 224, 224)
+    ph = H // patch_size
+    pw = W // patch_size
+
+    source = source[:, token_nums:, token_nums:]  # (8(B), 11(T_M), 196(T))
+    # SECTION I. MERGING
+    if merge:
+        source_merge = source[source.sum(dim=2) > min_merge_nums][None]  # (1, 438, 2352)
+        source_ummerge = source[source.sum(dim=2) <= min_merge_nums][None]
+        vis = source_merge.argmax(dim=1)  # (1(B), 1024(T))
+        num_groups = vis.max().item() + 1
+
+        cmap = generate_colormap(num_groups)
+        vis_merge = 0
+
+        for i in range(num_groups):
+            masks = (vis == i).float().view(Fr, 1, ph, pw)  # (12, 1, 16, 16)
+            masks = F.interpolate(masks, size=(H, W), mode="nearest")  # (12, 1, 16, 16)
+            masks = to_np(masks)
+
+            color = (masks * imgs).sum(axis=(0, 2, 3)) / np.expand_dims(masks.sum(),
+                                                                        -1)  # [0.53578436 0.37368262 0.3504749]
+            mask_eroded = np.stack([binary_erosion(mask[0]) for mask in masks])[:, None]  # (8, 1, 224, 224)
+            mask_edge = masks - mask_eroded
+
+            if not np.isfinite(color).all():
+                color = np.zeros(3)
+
+            vis_merge = vis_merge + mask_eroded * color.reshape(1, 3, 1, 1)  # (12, 3, 224, 224)
+            vis_merge = vis_merge + mask_edge * np.array(cmap[i]).reshape(1, 3, 1, 1)  # (12, 3, 224, 224)
+            # vis_img = vis_img + mask_edge * np.repeat(np.array(cmap[i]).reshape(1, 3, 1, 1), Fr, axis=0) # (12, 3, 1, 1)
+
+        if source_ummerge.sum() and unmerge:
+            masks = source_ummerge.sum(dim=1).float().view(Fr, 1, ph, pw)  # (12, 1, 14, 14)
+            masks = F.interpolate(masks, size=(H, W), mode="nearest")  # (12, 1, 14, 14)
+            masks = to_np(masks)
+            vis_merge = vis_merge * (1 - masks) + masks
+
+        vis_merge = torch.from_numpy(vis_merge.astype(np.float32))
+    else:
+        vis_merge = None
+
+    # SECTION II. PRUNING
+    vis_prune = to_np((1 - source.sum(dim=1)).reshape(12, ph, pw)) if prune else None
+
+    return vis_prune, vis_merge  # (12, 3, 224, 224)

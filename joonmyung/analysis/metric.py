@@ -1,5 +1,5 @@
-from joonmyung.log import MetricLogger
-from joonmyung.metric import accuracy
+from log import MetricLogger
+from metric import accuracy
 import torch
 
 

@@ -1,12 +1,11 @@
+from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize
+from joonmyung.metric import targetPred, accuracy
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.analysis.model import JModel
-from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize
 from joonmyung.meta_data import data2path
-from joonmyung.metric import targetPred, accuracy
 from joonmyung.log import AverageMeter
-from tqdm import tqdm
-from contextlib import suppress
 import torch.nn.functional as F
+from tqdm import tqdm
 import numpy as np
 import torch
 import cv2
@@ -44,78 +43,46 @@ def anaModel(transformer_class):
     return VisionTransformer
 
 class Analysis:
-    def __init__(self, model, analysis = [0], activate = [True, False, False, False], detach=True, key_name=None, num_classes = 1000
-                 , cls_start=0, cls_end=1, patch_start=1, patch_end=None, wrapping=False
-                 , amp_autocast=suppress, device="cuda"):
-        # Section A. Model
-        self.num_classes = num_classes
-        self.key_name = key_name
-        if wrapping:
+    def __init__(self, model, analysis = [0], activate = [True, False, False, False], num_classes = 1000, device="cuda"):
+        if sum(analysis):
             model_ = anaModel(model.__class__)
             model.__class__ = model_
             model.analysis = analysis
 
-        self.model = model
-        self.detach = detach
-
-        # Section B. Attention
-        self.kwargs_roll = {"cls_start" : cls_start, "cls_end" : cls_end,
-                            "patch_start" : patch_start, "patch_end" : patch_end}
-
-        # Section C. Setting
+        self.num_classes = num_classes
+        self.model = model.to(device)
         hooks = [{"name_i": 'attn_drop', "name_o": 'decoder', "fn_f": self.attn_forward, "fn_b": self.attn_backward},
-                 {"name_i": 'qkv', "name_o": 'decoder', "fn_f": self.qkv_forward, "fn_b": self.qkv_backward},
-                 {"name_i": 'head', "name_o": 'decoder', "fn_f": self.head_forward, "fn_b": self.head_backward},
-                 {"name_i": 'patch_embed.norm', "name_o": 'decoder', "fn_f": self.input_forward, "fn_b": self.input_backward}]
-        self.activate = activate
-
-        self.amp_autocast = amp_autocast
-        self.device       = device
+                 {"name_i": 'qkv', "name_o": 'decoder', "fn_f": self.qkv_forward, "fn_b": None},
+                 {"name_i": 'head', "name_o": 'decoder', "fn_f": self.head_forward, "fn_b": None},
+                 {"name_i": 'patch_embed.norm', "name_o": 'decoder', "fn_f": self.input_forward, "fn_b": None}]
 
         for name, module in self.model.named_modules():
-            for hook in hooks:
-                if hook["name_i"] in name and hook["name_o"] not in name:
-                    module.register_forward_hook(hook["fn_f"])
-                    module.register_backward_hook(hook["fn_b"])
-        self.resetInfo()
+            for idx, hook in enumerate(hooks):
+                if hook["name_i"] in name and hook["name_o"] not in name and activate[idx]:
+                    if hook["fn_f"]: module.register_forward_hook(hook["fn_f"])
+                    if hook["fn_b"]: module.register_backward_hook(hook["fn_b"])
 
-    def attn_forward(self, module, input, output):
-        # input/output : 1 * (8, 3, 197, 197) / (8, 3, 197, 197)
-        if self.activate[0]: self.info["attn"]["f"].append(output.detach())
+    def attn_forward(self, module, input, output): # input/output : 1 * (8, 3, 197, 197) / (8, 3, 197, 197)
+        self.info["attn"]["f"].append(output.detach())
 
-    def attn_backward(self, module, grad_input, grad_output):
-        # input/output : 1 * (8, 3, 197, 192) / (8, 3, 197, 576)
-        if self.activate[0]: self.info["attn"]["b"].append(grad_input[0].detach())
+    def attn_backward(self, module, grad_input, grad_output): # # input/output : 1 * (8, 3, 197, 192) / (8, 3, 197, 576)
+        self.info["attn"]["b"].append(grad_input[0].detach())
 
-    def qkv_forward(self, module, input, output):
-        # input/output : 1 * (8, 197, 192) / (8, 197, 576)
-        if self.activate[1]: self.info["qkv"]["f"].append(output.detach())
+    def qkv_forward(self, module, input, output): # # input/output : 1 * (8, 197, 192) / (8, 197, 576)
+        self.info["qkv"]["f"].append(output.detach())
 
-    def qkv_backward(self, module, grad_input, grad_output):
-        self.info["qkv"]["b"].append(grad_input[0].detach())
-       # pass
+    def head_forward(self, module, input, output): # input : 1 * (8(B), 192(D)), output : (8(B), 1000(C))
+        B = output.shape[0]
+        pred = targetPred(output, self.targets, topk=5)
+        self.info["head"]["TF"] += (pred[:, 0] == pred[:, 1])
 
-    def head_forward(self, module, input, output):
-        # input : 1 * (8(B), 192(D)), output : (8(B), 1000(C))
-        if self.activate[2]:
-            B = output.shape[0]
-            pred = targetPred(output, self.targets, topk=5)
-            self.info["head"]["TF"] += (pred[:, 0] == pred[:, 1])
-
-            acc1, acc5 = accuracy(output, self.targets, topk=(1,5))
-            self.info["head"]["acc1"].update(acc1.item(), n=B)
-            self.info["head"]["acc5"].update(acc5.item(), n=B)
-
-    def head_backward(self, module, grad_input, grad_output):
-        pass
+        acc1, acc5 = accuracy(output, self.targets, topk=(1,5))
+        self.info["head"]["acc1"].update(acc1.item(), n=B)
+        self.info["head"]["acc5"].update(acc5.item(), n=B)
 
     def input_forward(self, module, input, output):
-        if self.activate[3]:
-            norm = F.normalize(output, dim=-1)
-            self.info["input"]["sim"] += (norm @ norm.transpose(-1, -2)).mean(dim=(-1, -2))
-
-    def input_backward(self, module, grad_input, grad_output):
-        pass
+        norm = F.normalize(output, dim=-1)
+        self.info["input"]["sim"] += (norm @ norm.transpose(-1, -2)).mean(dim=(-1, -2))
 
     def resetInfo(self):
         self.info = {"attn" : {"f": [], "b": []},
@@ -151,7 +118,7 @@ class Analysis:
             self.info["attn"]["b"] = []
             self.model.zero_grad()
             if index == None: index = output.max(dim=1)[1]
-            index = torch.eye(self.num_classes, device=self.device)[index]
+            index = torch.eye(self.num_classes, device=device)[index]
             loss = (output * index).sum()
             loss.backward(retain_graph=True)
             grad = self.info["attn"]["b"]
@@ -162,32 +129,23 @@ class Analysis:
 
 
 if __name__ == '__main__':
-    # Section A. Data
-    dataset_name, device, amp_autocast, debug = "imagenet", 'cuda', torch.cuda.amp.autocast, True
+    dataset_name, device, debug = "imagenet", 'cuda', True
     data_path, num_classes, _, _ = data2path(dataset_name)
-    view, activate = [False, True, False, False, True], [True, False, False, False]
-        # VIEW     : IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT
-        # ACTIVATE : ATTN, QKV, HEAD
+    activate = [True, False, False, False]   # [ATTN, QKV, HEAD]
     analysis = [0] # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
 
     dataset = JDataset(data_path, dataset_name, device=device)
-    # data_idxs = [[c, i] for i in range(1000) for c in range(50)]
-    data_idxs = [[1, 0]]
+    data_idxs = [[c, i] for i in range(1000) for c in range(50)]
 
-    # Section B. Model
-    # model_number, model_name = 0, "deit_tiny_patch16_224" # deit, vit | tiny, small, base
-    # model_number, model_name = 1, "deit_tiny_patch16_224"
-    model_number, model_name = 2, "ViT-B/16"
-
-    # Section C. Setting
     modelMaker = JModel(num_classes, device=device)
-    model = modelMaker.getModel(model_number, model_name)
+    model = modelMaker.getModel(2, "ViT-B/16")
     model = Analysis(model, analysis = analysis, activate = activate, device=device)
+
+    view = [False, True, False, False, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
     for idx, data_idx in enumerate(data_idxs):
         print(f"------------------------- [{data_idx[0]}]/[{data_idx[1]}] -------------------------")
 
         sample, target, label_name = dataset[data_idx[0], data_idx[1]]
-        # sample, _, img, _ = dataset.getItemPath('/hub_data1/joonmyung/data/imagenet/train/n01440764/n01440764_39.JPEG')
         output = model(sample)
         if view[0]:
             drawImgPlot(unNormalize(sample, "imagenet"))
@@ -220,22 +178,6 @@ if __name__ == '__main__':
             data_vidTLDR = overlay(sample, results["vidTLDR"], dataset_name)
             drawImgPlot(data_vidTLDR, col=col)
 
-            print(1)
-
-            # roll = F.normalize(results["rollout"].reshape(12, 196), dim=-1)
-
-            # datas_rollout = overlay(sample, rollout,   dataset_name)
-            # drawImgPlot(datas_rollout, col=col)
-
-            # datas_attn = overlay(sample, attentive, dataset_name)
-            # drawImgPlot(datas_attn, col=col)
-
-            # a = attentive[5]
-            # b = torch.stack([a.clamp(max=a.quantile(1 - v_ratio)) for v_ratio in [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55]])
-            # datas_attn    = overlay(sample, b, dataset_name)
-            # drawImgPlot(datas_attn, col=col)
-            # print(1)
-
         if view[2]:  # SALIENCY W/ DATA
             img = np.array(dataset[data_idx[0], data_idx[1], 2][0])
 
@@ -254,12 +196,8 @@ if __name__ == '__main__':
             output = model(sample)
             attn = torch.stack(model.info["attn"]["f"], dim=1).mean(dim=[2,3])[0,-2]
             topK = attn[1:].topk(k, -1, True)[1]
-            # a = torch.autograd.grad(attn.sum(), samples, retain_graph=True)[0].sum(dim=1)
             a = torch.autograd.grad(output[:,3], sample, retain_graph=True)[0].sum(dim=1)
             b = F.interpolate(a.unsqueeze(0), scale_factor=0.05, mode='nearest')[0]
-            # drawHeatmap(b)
-            print(1)
-            # to_np(torch.stack([attn[:, :, 0], attn[:, :, 1:].sum(dim=-1)], -1)[0])
 
         if view[4]: # ATTENTION MOVEMENT (FROM / TO)
             attn = torch.stack(model.info["attn"]["f"]).mean(dim=2).transpose(0,1) # (8 (B), 12 (L), 197(T_Q), 197(T_K))
@@ -272,4 +210,3 @@ if __name__ == '__main__':
             cls2patch   = attn[:, :, 1:, 0].mean(dim=2)
             patch2patch = attn[:, :, 1:, 1:].mean(dim=2).sum(dim=-1)
             # to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0), cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
-            print(1)

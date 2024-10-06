@@ -1,10 +1,9 @@
 
 from collections import OrderedDict
-
-import glob
-from pprint import pprint
-
 from timm import create_model
+from pprint import pprint
+import glob
+
 import torch
 import os
 
@@ -20,7 +19,7 @@ class ZeroShotInference():
 
         with torch.no_grad():
             text_features = model.encode_text(prompts)
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True) # (1000(T), 512(D))
 
         self.text_features = text_features
         self.model = model
@@ -34,7 +33,7 @@ class ZeroShotInference():
 
 
 class JModel():
-    def __init__(self, num_classes = None, root_path= None, device="cuda"):
+    def __init__(self, num_classes = 1000, root_path= "/hub_data1/joonmyung/weights", device="cuda"):
         self.num_classes = num_classes
 
         self.root_path = root_path
@@ -46,6 +45,7 @@ class JModel():
     def load_state_dict(self, model, state_dict):
         state_dict = OrderedDict((k.replace("module.", ""), v) for k, v in state_dict.items())
         model.load_state_dict(state_dict)
+
 
 
     def getModel(self, model_type=0, model_name ="deit_tiny"):

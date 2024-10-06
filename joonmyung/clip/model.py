@@ -234,7 +234,7 @@ class VisionTransformer(nn.Module):
 
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x, attn_mask)
-        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = x.permute(1, 0, 2)  # (100(B), 197(T), 768(D))
 
         x = self.ln_post(x[:, 0, :])
 

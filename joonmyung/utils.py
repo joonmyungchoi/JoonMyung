@@ -1,5 +1,3 @@
-from collections import OrderedDict
-
 import torch.distributed as dist
 from pathlib import Path
 import numpy as np
