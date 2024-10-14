@@ -24,8 +24,8 @@ def drawAnalysis(model, dataset, idxs, compression, frame_num = 1, patch_size=1,
                                                          min_merge_nums=1, prune=False, merge=True, unmerge=False)
             r_merge = np.uint8(to_np(r_merge) * 255)
             ung = ((source.sum(dim=2) == 1)[:, :, None] * source).sum(dim=1).reshape(frame_num, patch_num, patch_num)
-            ung = np.uint8(to_np(ung[:, :, None, :, None].repeat(1, 1, patch_size, 1, patch_size).reshape(-1, 1, 224, 224)))
-            imgs = np.uint8(to_np(unNormalize(image.reshape(-1, 3, 224, 224), "imagenet")) * 255)
+            ung = np.uint8(to_np(ung[:, :, None, :, None].repeat(1, 1, patch_size, 1, patch_size).reshape(-1, 1, image_size, image_size)))
+            imgs = np.uint8(to_np(unNormalize(image.reshape(-1, 3, image_size, image_size), "imagenet")) * 255)
             result_a = (r_merge * (1 - ung)) + imgs * ung
             drawImgPlot(torch.from_numpy(result_a), col=frame_num)
 
@@ -48,7 +48,6 @@ if __name__ == "__main__":
     views = [False, True, True] # [RAW, MERGE, MASS]
     dataset = JDataset("/hub_data1/joonmyung/data/imagenet", "imagenet", train=False)
     drawAnalysis(model, dataset, idxs, compression, frame_num=1, patch_size=14, image_size=224, views=views, device="cuda")
-
 
 
 # STEP I. GET INFORMATION

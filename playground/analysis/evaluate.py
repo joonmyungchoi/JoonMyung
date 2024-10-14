@@ -1,10 +1,10 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-from analysis import JDataset, JModel, ZeroShotInference
-from meta_data import data2path, imnet_label
-from utils import read_classnames
-from log import AverageMeter
-from metric import accuracy
+from joonmyung.analysis import JDataset, JModel, ZeroShotInference
+from joonmyung.meta_data import data2path, imnet_label
+from joonmyung.utils import read_classnames
+from joonmyung.log import AverageMeter
+from joonmyung.metric import accuracy
 from tqdm import tqdm
 import torch
 
@@ -14,7 +14,7 @@ classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt"
 num_classes, model_name, model_number = len(classnames), "ViT-B/16", 2
 
 modelMaker = JModel(num_classes, root_path, device=device)
-model, preprocess = modelMaker.getModel(model_number, model_name)
+model = modelMaker.getModel(model_number, model_name)
 data_path, num_classes, _, _ = data2path(dataset_name)
 dataset = JDataset(data_path, dataset_name, transform_type=2, device=device)
 dataloader = dataset.getAllItems(batch_size)

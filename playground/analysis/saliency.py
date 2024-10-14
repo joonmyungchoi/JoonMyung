@@ -15,6 +15,7 @@ data_idxs = [[c, i] for i in range(1000) for c in range(50)]
 modelMaker = JModel(num_classes, device=device)
 model = modelMaker.getModel(2, "ViT-B/16")
 
+
 activate = [True, False, False, False]  # [ATTN, QKV, HEAD]
 analysis = [0]  # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
 model = Analysis(model, analysis=analysis, activate=activate, device=device)
@@ -88,3 +89,7 @@ for idx, data_idx in enumerate(data_idxs):
         cls2patch = attn[:, :, 1:, 0].mean(dim=2)
         patch2patch = attn[:, :, 1:, 1:].mean(dim=2).sum(dim=-1)
         # to_np(torch.stack([cls2cls.mean(dim=0), patch2cls.mean(dim=0), cls2patch.mean(dim=0), patch2patch.mean(dim=0)]))
+
+    if view[5]: # TEXT-VISION ATTENTION
+
+        pass
