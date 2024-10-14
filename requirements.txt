@@ -1,0 +1,10 @@
+fvcore
+timm
+torchprofile
+thop
+wandb
+scipy
+matplotlib
+seaborn
+opencv-python
+ftfy

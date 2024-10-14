@@ -1,6 +1,10 @@
 import setuptools
 from setuptools import find_packages
 
+def fetch_requirements(filename):
+    with open(filename) as f:
+        return [ln.strip() for ln in f.read().split("\n")]
+
 setuptools.setup(
     name="joonmyung",
     version="1.5.15",
@@ -17,6 +21,7 @@ setuptools.setup(
                                     "*.egg-info.*"]),
     zip_safe=False,
     install_requires=[
+        fetch_requirements("requirements.txt"),
     ]
 )
 

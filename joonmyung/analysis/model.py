@@ -21,12 +21,11 @@ class ZeroShotInference():
     def __init__(self, model, classnames,
                  prompt = "a photo of a {}.", device = "cuda"):
 
-        for i, resblock in enumerate(model.visual.transformer.resblocks):
-            resblock.__class__ = ResidualAttentionBlock
-            attn = Attention(resblock.attn.embed_dim, resblock.attn.num_heads, qkv_bias=True)
-            self.convert_attention_block(resblock.attn, attn)
-            resblock.attn = attn
-            print(1)
+        # for i, resblock in enumerate(model.visual.transformer.resblocks):
+        #     resblock.__class__ = ResidualAttentionBlock
+        #     attn = Attention(resblock.attn.embed_dim, resblock.attn.num_heads, qkv_bias=True)
+        #     self.convert_attention_block(resblock.attn, attn)
+        #     resblock.attn = attn
 
         prompts = [prompt.format(c.replace("_", " ")) for c in classnames]
         print(f"Prompts: {prompts}")
