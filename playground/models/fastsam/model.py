@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     device, train = "cuda", True
     box_prompt, text_prompt, point_prompt, point_label = None, None, None, None
-    model_path, root_path = "/hub_data1/joonmyung/weights/FastSAM/FastSAM-x.pt", '/hub_data1/joonmyung/data/imagenet'
+    model_path, root_path = "/hub_data2/joonmyung/weights/FastSAM/FastSAM-x.pt", '/hub_data2/joonmyung/data/imagenet'
     data_len, data_split_num, split_full = 50, 0, 8
 
     split = args.split

@@ -26,7 +26,7 @@ parser.add_argument("--debug",       type=str2bool, default=False, help="")
 args = parser.parse_args()
 
 train = True
-root_path = '/hub_data1/joonmyung/data/imagenet'
+root_path = '/hub_data2/joonmyung/data/imagenet'
 if args.debug:
     data_paths = [os.path.join(root_path, "train", "n01440764", "n01440764_39.JPEG")]
 else:

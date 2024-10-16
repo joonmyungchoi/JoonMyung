@@ -12,18 +12,18 @@ from joonmyung.utils import to_np
 
 train, resize, data_type = False, True, 1
 if data_type == 0: # IMAGENET
-    # root_path = '/hub_data1/joonmyung/data/imagenet/train_obj'
-    root_path = '/hub_data1/joonmyung/data/imagenet/train_opencvFine'
+    # root_path = '/hub_data2/joonmyung/data/imagenet/train_obj'
+    root_path = '/hub_data2/joonmyung/data/imagenet/train_opencvFine'
     data_paths = sorted(glob(os.path.join(root_path, "**", "*.pt")))
     datas = torch.zeros((1, 224, 224), device="cuda")
 
 elif data_type: # MSRVTT
     if data_type == 1: # MSRVTT + OPENCV
-        # root_path = f'/hub_data1/joonmyung/data/MSRVTT/videos/saliency_opencv'
-        root_path = f'/hub_data1/joonmyung/data/MSRVTT/videos/saliency_opencvFine'
+        # root_path = f'/hub_data2/joonmyung/data/MSRVTT/videos/saliency_opencv'
+        root_path = f'/hub_data2/joonmyung/data/MSRVTT/videos/saliency_opencvFine'
         data_paths = sorted(glob(os.path.join(root_path, "*.pt")))
     elif data_type == 2:  # MSRVTT + FastSAM
-        root_path = f'/hub_data1/joonmyung/data/MSRVTT/videos/saliency_sam/' # 152
+        root_path = f'/hub_data2/joonmyung/data/MSRVTT/videos/saliency_sam/' # 152
         data_paths = sorted(glob(os.path.join(root_path, "**", "*.pt")))
     datas = []
 if not resize:

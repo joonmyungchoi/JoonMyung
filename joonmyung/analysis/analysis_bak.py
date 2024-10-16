@@ -142,7 +142,7 @@ if __name__ == '__main__':
     modelMaker = JModel(num_classes, device=device)
     model = modelMaker.getModel(2, "ViT-B/16")
 
-    classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt")
+    classnames = read_classnames("/hub_data2/joonmyung/data/imagenet/classnames.txt")
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.", device=device)
 
     model = Analysis(model, analysis = analysis, activate = activate, device=device)

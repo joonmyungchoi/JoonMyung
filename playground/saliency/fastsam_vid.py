@@ -19,7 +19,7 @@ def show_mask_track(annotation, color_dict):
 max_det = 300
 video_path = '../../file/video.mp4'
 cap = cv2.VideoCapture(video_path)
-model = YOLO("/hub_data1/joonmyung/weights/FastSAM/FastSAM-x.pt")
+model = YOLO("/hub_data2/joonmyung/weights/FastSAM/FastSAM-x.pt")
 save_path = './output/' + os.path.split(video_path)[-1][:-4]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

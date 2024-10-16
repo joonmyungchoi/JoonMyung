@@ -21,11 +21,12 @@ class ZeroShotInference():
     def __init__(self, model, classnames,
                  prompt = "a photo of a {}.", device = "cuda"):
 
-        # for i, resblock in enumerate(model.visual.transformer.resblocks):
-        #     resblock.__class__ = ResidualAttentionBlock
-        #     attn = Attention(resblock.attn.embed_dim, resblock.attn.num_heads, qkv_bias=True)
-        #     self.convert_attention_block(resblock.attn, attn)
-        #     resblock.attn = attn
+        for i, resblock in enumerate(model.visual.transformer.resblocks):
+            resblock.__class__ = ResidualAttentionBlock
+            attn = Attention(resblock.attn.embed_dim, resblock.attn.num_heads, qkv_bias=True)
+            self.convert_attention_block(resblock.attn, attn)
+            resblock.attn = attn
+        model.visual.TBD = False
 
         prompts = [prompt.format(c.replace("_", " ")) for c in classnames]
         print(f"Prompts: {prompts}")
@@ -59,7 +60,7 @@ class ZeroShotInference():
 
 
 class JModel():
-    def __init__(self, num_classes = 1000, root_path= "/hub_data1/joonmyung/weights", device="cuda"):
+    def __init__(self, num_classes = 1000, root_path= "/hub_data2/joonmyung/weights", device="cuda"):
         self.num_classes = num_classes
 
         self.root_path = root_path

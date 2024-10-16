@@ -1,5 +1,5 @@
-# import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 from joonmyung.analysis import JDataset, JModel, ZeroShotInference
 from joonmyung.meta_data import data2path, imnet_label
 from joonmyung.utils import read_classnames
@@ -8,13 +8,13 @@ from joonmyung.metric import accuracy
 from tqdm import tqdm
 import torch
 
-root_path, dataset_name, batch_size, device, debug = "/hub_data1/joonmyung/weights", "imagenet", 100, 'cuda', True
-classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt")
+root_path, dataset_name, batch_size, device, debug = "/hub_data2/joonmyung/weights", "imagenet", 100, 'cuda', True
+classnames = read_classnames("/hub_data2/joonmyung/data/imagenet/classnames.txt")
 num_classes, model_name, model_number = len(classnames), "ViT-B/16", 2
 
 modelMaker = JModel(num_classes, root_path, device=device)
 model = modelMaker.getModel(model_number, model_name)
-data_path, num_classes, _, _ = data2path(dataset_name)
+data_path, num_classes, _, _ = data2path(dataset_name, hub_num = 2)
 dataset = JDataset(data_path, dataset_name, transform_type=2, device=device)
 dataloader = dataset.getAllItems(batch_size)
 

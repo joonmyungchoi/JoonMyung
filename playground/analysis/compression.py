@@ -40,13 +40,13 @@ if __name__ == "__main__":
     from dataset import JDataset
     from model import ZeroShotInference, JModel
 
-    classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt")
+    classnames = read_classnames("/hub_data2/joonmyung/data/imagenet/classnames.txt")
     model, preprocess = JModel().getModel(2, "ViT-B/16")
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.")
 
     compression, idxs = [[1, 0, 10, 0, 1, 1], [1, 10, 25, 1], [0]], range(1000)
     views = [False, True, True] # [RAW, MERGE, MASS]
-    dataset = JDataset("/hub_data1/joonmyung/data/imagenet", "imagenet", train=False)
+    dataset = JDataset("/hub_data2/joonmyung/data/imagenet", "imagenet", train=False)
     drawAnalysis(model, dataset, idxs, compression, frame_num=1, patch_size=14, image_size=224, views=views, device="cuda")
 
 

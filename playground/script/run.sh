@@ -30,7 +30,7 @@ then
 
 elif [ $server = 137 ]
 then
-  data_path="/hub_data1/joonmyung/data/imagenet"
+  data_path="/hub_data2/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/2023ICLR"
 elif [ $server = 154 ]
 then
@@ -42,7 +42,7 @@ then
   output_dir="/hub_data2/joonmyung/conference/2023ICLR"
 elif [ $server = 113 ]
 then
-  data_path="/hub_data1/joonmyung/data/imagenet"
+  data_path="/hub_data2/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/conference/2023ICLR"
 
 elif [ $server = 65 ]
@@ -51,7 +51,7 @@ then
   output_dir="/hub_data2/joonmyung/conference/2023ICLR"
 elif [ $server = 67 ]
 then
-  data_path="/hub_data1/joonmyung/data/imagenet"
+  data_path="/hub_data2/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/conference/2023ICLR"
 elif [ $server = 64 ]
 then

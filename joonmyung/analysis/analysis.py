@@ -86,7 +86,7 @@ if __name__ == '__main__':
 
     model = Analysis(model)
 
-    classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt")
+    classnames = read_classnames("/hub_data2/joonmyung/data/imagenet/classnames.txt")
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.", device=device)
     view = [False, True, False, False, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
     for idx, data_idx in enumerate(data_idxs):
