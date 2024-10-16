@@ -1,4 +1,4 @@
-from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize
+from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize, drawHeatmap
 from joonmyung.analysis.model import JModel, ZeroShotInference
 from joonmyung.metric import targetPred, accuracy
 from joonmyung.analysis.dataset import JDataset
@@ -34,7 +34,6 @@ def anaModel(transformer_class):
     return VisionTransformer
 
 def Analysis(model, hook_info= [["attn_drop", "decoder", "attn"]]):
-
     model.__class__ = anaModel(model.__class__)
     model.resetInfo()
     model.createHook(hook_info)
@@ -53,13 +52,30 @@ if __name__ == '__main__':
     model = modelMaker.getModel(2, "ViT-B/16")
     classnames = read_classnames("/hub_data1/joonmyung/data/imagenet/classnames.txt")
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.", device=device)
-
-    model.model = Analysis(model.model)
+    hook_info = [["attn_drop", "decoder", "attn"],
+                 ["ln_pre",  "decoder", "feat_1"],
+                 ["ln_1",    "decoder", "feat_2"],
+                 ["ln_2",    "decoder", "feat_3"],
+                 ["ln_post", "decoder", "feat_4"]]
+    model.model = Analysis(model.model, hook_info)
     view = [False, True, False, False, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
     for idx, data_idx in enumerate(data_idxs):
         print(f"------------------------- [{data_idx[0]}]/[{data_idx[1]}] -------------------------")
         model.model.resetInfo()
         sample, target, label_name = dataset[data_idx[0], data_idx[1]]
         output = model(sample)
-        print(1)
-# model.createHook([True, True, True, False, True])
+        info = model.model.info
+        drawImgPlot(unNormalize(sample))
+        for name, value in info.items():
+            if "feat" in name:
+                print()
+
+            if "feat" in name:
+                print(f"name : {name}")
+                image_feat  = (torch.stack(value)[:, :, 1:] @ model.model.visual.proj) # (1, 1, 196, 512)
+                L = image_feat.shape[0]
+                image_feat = image_feat / image_feat.norm(dim=-1, keepdim=True)
+
+                text_feat = model.text_features[1][None].t()
+                sim = (image_feat @ text_feat).reshape(L, 14, 14)
+                drawHeatmap(sim, col = L)
