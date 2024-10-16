@@ -28,7 +28,7 @@ def get_args():
     parser.add_argument(
         '--image-path',
         type=str,
-        default='/hub_data2/joonmyung/data/imagenet/train/n01440764/n01440764_39.JPEG',
+        default='/hub_data1/joonmyung/data/imagenet/train/n01440764/n01440764_39.JPEG',
         help='Input image path')
     parser.add_argument('--aug_smooth', action='store_true',
                         help='Apply test time augmentation to smooth the CAM')

@@ -34,7 +34,7 @@ class JDataset():
                     }
     }
 
-    def __init__(self, data_path="/hub_data2/joonmyung/data/imagenet", dataset="imagenet", train=False, transform_type = 0,
+    def __init__(self, data_path="/hub_data1/joonmyung/data/imagenet", dataset="imagenet", train=False, transform_type = 0,
                  distribution = None, size = None, device="cuda"):
         self.dataset = dataset.lower()
         setting = self.settings[self.dataset]
@@ -118,7 +118,7 @@ class JDataset():
         return result
 
 if __name__ == "__main__":
-    root_path = "/hub_data2/joonmyung/data/imagenet"
+    root_path = "/hub_data1/joonmyung/data/imagenet"
     dataset = "imagenet"
     dataset = JDataset(root_path, dataset, train=False)
     d, l, l_n  = dataset[[10, 3]]

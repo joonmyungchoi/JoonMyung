@@ -34,7 +34,7 @@ data_idxs = range(50000)
 # Section B. Model
 # model_number, model_name = 0, "deit_tiny_patch16_224" # deit, vit | tiny, small, base
 # model_number, model_name = 1, "deit_tiny_patch16_224"
-model_number, model_name, model_path = 2, "deit_tiny_patch16_224", "/hub_data2/joonmyung/weights/TEMPLATE/deit/tiny_WO_CLS"
+model_number, model_name, model_path = 2, "deit_tiny_patch16_224", "/hub_data1/joonmyung/weights/TEMPLATE/deit/tiny_WO_CLS"
 
 modelMaker = JModel(num_classes, model_path=model_path, device=device)
 

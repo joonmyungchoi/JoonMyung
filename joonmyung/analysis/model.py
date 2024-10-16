@@ -38,9 +38,6 @@ class ZeroShotInference():
             text_features = text_features / text_features.norm(dim=-1, keepdim=True) # (1000(T), 512(D))
 
         self.text_features = text_features
-
-
-
         self.model = model
 
     def convert_attention_block(self, src, dst):
@@ -60,7 +57,7 @@ class ZeroShotInference():
 
 
 class JModel():
-    def __init__(self, num_classes = 1000, root_path= "/hub_data2/joonmyung/weights", device="cuda"):
+    def __init__(self, num_classes = 1000, root_path= "/hub_data1/joonmyung/weights", device="cuda"):
         self.num_classes = num_classes
 
         self.root_path = root_path

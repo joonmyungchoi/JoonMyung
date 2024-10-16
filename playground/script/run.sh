@@ -17,8 +17,8 @@ dataset="IMNET"
 
 if [ $server = 149 ]
 then
-  data_path="/hub_data2/imagenet/imagenet-pytorch"
-  output_dir="/hub_data2/joonmyung/2023ICLR"
+  data_path="/hub_data1/imagenet/imagenet-pytorch"
+  output_dir="/hub_data1/joonmyung/2023ICLR"
 elif [ $server = kakao ]
 then
   data_path="/data/opensets/imagenet-pytorch"
@@ -30,7 +30,7 @@ then
 
 elif [ $server = 137 ]
 then
-  data_path="/hub_data2/joonmyung/data/imagenet"
+  data_path="/hub_data1/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/2023ICLR"
 elif [ $server = 154 ]
 then
@@ -38,20 +38,20 @@ then
   output_dir="/data1/joonmyung/conference/2023ICLR"
 elif [ $server = 151 ]
 then
-  data_path="/hub_data2/joonmyung/data/imagenet"
-  output_dir="/hub_data2/joonmyung/conference/2023ICLR"
+  data_path="/hub_data1/joonmyung/data/imagenet"
+  output_dir="/hub_data1/joonmyung/conference/2023ICLR"
 elif [ $server = 113 ]
 then
-  data_path="/hub_data2/joonmyung/data/imagenet"
+  data_path="/hub_data1/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/conference/2023ICLR"
 
 elif [ $server = 65 ]
 then
-  data_path="/hub_data2/joonmyung/data/imagenet"
-  output_dir="/hub_data2/joonmyung/conference/2023ICLR"
+  data_path="/hub_data1/joonmyung/data/imagenet"
+  output_dir="/hub_data1/joonmyung/conference/2023ICLR"
 elif [ $server = 67 ]
 then
-  data_path="/hub_data2/joonmyung/data/imagenet"
+  data_path="/hub_data1/joonmyung/data/imagenet"
   output_dir="/hub_data/joonmyung/conference/2023ICLR"
 elif [ $server = 64 ]
 then

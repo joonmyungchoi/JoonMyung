@@ -115,7 +115,7 @@
 # if __name__ == '__main__':
 #     # Section A. Data
 #     # root_path, dataset_name = "/data1/joonmyung/data/imagenet", "imagenet"
-#     root_path, dataset_name = "/hub_data2/joonmyung/data/imagenet", "imagenet"
+#     root_path, dataset_name = "/hub_data1/joonmyung/data/imagenet", "imagenet"
 #     # root_path, dsataset_name = "/data/opensets/imagenet-pytorch", "imagenet"
 #     # data_num = [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]]
 #     data_num = [[3, 1]]

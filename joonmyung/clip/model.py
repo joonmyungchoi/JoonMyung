@@ -241,12 +241,12 @@ class VisionTransformer(nn.Module):
         else:
             x = self.transformer(x, attn_mask)
 
-        x = self.ln_post(x[:, 0, :])
+        x = self.ln_post(x)
 
         if self.proj is not None:
             x = x @ self.proj
 
-        return x
+        return x[:, 0, :]
 
 
 class CLIP(nn.Module):
