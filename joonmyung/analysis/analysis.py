@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import cv2
 from timm.models.vision_transformer import Attention
+
 def anaModel(transformer_class):
     class VisionTransformer(transformer_class):
         info_key = []
@@ -34,11 +35,17 @@ def anaModel(transformer_class):
         def backward_hook(self, hook_info, module, input, output):
             self.info[hook_info[3]].append(input[0].detach())
 
+        def forward(self, *args, **kwdargs):
+            self.resetInfo()
+            return super().forward(*args, **kwdargs)
+        def encode_image(self, *args, **kwdargs):
+            self.resetInfo()
+            return super().forward(*args, **kwdargs)
+
     return VisionTransformer
 
 def Analysis(model, hook_info= [["f", "attn_drop", "decoder", "attn"]]):
     model.__class__ = anaModel(model.__class__)
-    model.resetInfo()
     model.createHook(hook_info)
     return model
 
@@ -65,7 +72,6 @@ if __name__ == '__main__':
     view = [False, True, True, True, True, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
     for idx, data_idx in enumerate(data_idxs):
         print(f"------------------------- [{data_idx[0]}]/[{data_idx[1]}] -------------------------")
-        model.model.resetInfo()
         sample, target, label_name = dataset[data_idx[0], data_idx[1]]
         if view[0]:
             drawImgPlot(unNormalize(sample, "imagenet"))

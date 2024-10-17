@@ -4,7 +4,6 @@ import numpy as np
 import torch
 
 
-
 def drawAnalysis(model, dataset, idxs, compression, frame_num = 1, patch_size=1, image_size=224, views=[False, True, True], device="cuda"):
     patch_num = int(image_size / patch_size)
 
@@ -48,24 +47,3 @@ if __name__ == "__main__":
     views = [False, True, True] # [RAW, MERGE, MASS]
     dataset = JDataset("/hub_data1/joonmyung/data/imagenet", "imagenet", train=False)
     drawAnalysis(model, dataset, idxs, compression, frame_num=1, patch_size=14, image_size=224, views=views, device="cuda")
-
-
-# STEP I. GET INFORMATION
-    # SELF-ATTN ✓
-    # TEXT/VISION FEATURES ✓
-    # SIZE/SOURCE
-
-# STEP II. DRAW ANALYSIS
-    # TEXT - VISION SIMILARITY
-        # FINAL   - ALL
-        # AVERAGE - ALL
-        # N-LAYER - N-LAYER
-
-    # TOKEN MERGING
-        # IMAGE
-        # SIZE
-        # SOURCE
-
-    # VID-TLDR
-        # ATTN
-        # IMAGE
