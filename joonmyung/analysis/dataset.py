@@ -48,6 +48,7 @@ class JDataset():
                 transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
                 transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
                 transforms.Compose([transforms.Resize(224, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
+                transforms.Compose([transforms.Resize(224, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
                 transforms.Compose([transforms.ToTensor()])
         ]
 
@@ -63,7 +64,6 @@ class JDataset():
     def __getitem__(self, idx):
         label_num, img_num = idx
         img_path = self.img_paths[label_num][img_num]
-
         sample = default_loader(img_path)
         sample = self.transform[self.transform_type](sample)
 

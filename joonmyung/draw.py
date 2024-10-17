@@ -163,7 +163,7 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 @torch.no_grad()
 def saliency(attentions=None, gradients=None, head_fusion="mean",
              discard_ratios = [0.0], data_from="cls", reshape=False,
-             activate = [True, True, True], device="cpu"):
+             activate = [True, True, True], device="cpu", dtype = torch.float32):
 
     # attentions : L * (B, H, h, w), gradients : L * (B, H, h, w)
     if type(discard_ratios) is not list: discard_ratios = [discard_ratios]
@@ -184,14 +184,14 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
     elif head_fusion == "median":
         saliencys = saliencys.median(axis=2)[0]
 
-    saliencys = saliencys.to(device)
+    saliencys = saliencys.to(device = device, dtype = dtype)
 
     L, B, _, T = saliencys.shape # (L(12), B(1), T(197), T(197))
     H = W = int(T ** 0.5)
 
     result = {}
     if activate[0]:
-        rollouts, I = [], torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1)  # (B, 197, 197)
+        rollouts, I = [], torch.eye(T, device=device, dtype=dtype)[None].expand(B, -1, -1)  # (B, 197, 197)
         for discard_ratio in discard_ratios:
             for start in range(L):
                 rollout = I

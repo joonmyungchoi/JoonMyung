@@ -40,7 +40,7 @@ def anaModel(transformer_class):
             return super().forward(*args, **kwdargs)
         def encode_image(self, *args, **kwdargs):
             self.resetInfo()
-            return super().forward(*args, **kwdargs)
+            return super().encode_image(*args, **kwdargs)
 
     return VisionTransformer
 
@@ -52,7 +52,6 @@ def Analysis(model, hook_info= [["f", "attn_drop", "decoder", "attn"]]):
 if __name__ == '__main__':
     dataset_name, device, debug = "imagenet", 'cuda', True
     data_path, num_classes, _, _ = data2path(dataset_name)
-    activate = [True, False, False, False]   # [ATTN, QKV, HEAD]
     analysis = [0] # [0] : INPUT TYPE, [0 : SAMPLE + POS, 1 : SAMPLE, 2 : POS]
 
     dataset = JDataset(data_path, dataset_name, device=device)
@@ -69,7 +68,7 @@ if __name__ == '__main__':
                  ["f", "ln_2",    "decoder", "feat_3"],
                  ["f", "ln_post", "decoder", "feat_4"]]
     model.model = Analysis(model.model, hook_info)
-    view = [False, True, True, True, True, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
+    view = [False, False, True, True, True, True]  # [IMG, SALIENCY:ATTN, SALIENCY:OPENCV, SALIENCY:GRAD, ATTN. MOVEMENT]
     for idx, data_idx in enumerate(data_idxs):
         print(f"------------------------- [{data_idx[0]}]/[{data_idx[1]}] -------------------------")
         sample, target, label_name = dataset[data_idx[0], data_idx[1]]
@@ -96,7 +95,7 @@ if __name__ == '__main__':
             drawImgPlot(data_vidTLDR, col=col)
 
             discard_ratios, v_ratio, head_fusion, data_from = [0.0], 0.1, "mean", "cls"
-            results = saliency(attns, grads, activate=activate, head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from, reshape=True, device=device)
+            results = saliency(attns, grads, head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from, reshape=True, device=device)
 
             data_roll = overlay(sample, results["rollout"], dataset_name)
             drawImgPlot(data_roll, col=col)
@@ -108,8 +107,7 @@ if __name__ == '__main__':
             drawImgPlot(data_vidTLDR, col=col)
 
         if view[2]:  # SALIENCY W/ DATA
-            img = np.array(dataset[data_idx[0], data_idx[1], 2][0])
-
+            img = (dataset.unNormalize(sample)[0].permute(1, 2, 0).detach().cpu().numpy() * 255)
             img_saliency = cv2.saliency.StaticSaliencySpectralResidual_create()
             (success, saliencyMap) = img_saliency.computeSaliency(img)
             saliencyMap = (saliencyMap * 255).astype("uint8")
