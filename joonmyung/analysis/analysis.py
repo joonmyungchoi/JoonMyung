@@ -72,6 +72,8 @@ if __name__ == '__main__':
     for idx, data_idx in enumerate(data_idxs):
         print(f"------------------------- [{data_idx[0]}]/[{data_idx[1]}] -------------------------")
         sample, target, label_name = dataset[data_idx[0], data_idx[1]]
+        sample.requires_grad = True
+
         if view[0]:
             drawImgPlot(unNormalize(sample, "imagenet"))
 
@@ -79,9 +81,9 @@ if __name__ == '__main__':
         index = torch.eye(num_classes, device=device)[target]
         (output * index).sum().backward(retain_graph=True)
 
+        attns = model.model.info["attn"]
+        grads = model.model.info["grad"]
         if view[1]:
-            attns = model.model.info["attn"]
-            grads = model.model.info["grad"]
             col, discard_ratios, v_ratio, head_fusion, data_from = 12, [0.0], 0.0, "mean", "patch"
             results = saliency(attns, False, head_fusion=head_fusion, discard_ratios=discard_ratios, data_from=data_from, reshape=True, device=device)
 
@@ -117,12 +119,10 @@ if __name__ == '__main__':
             threshMap = cv2.threshold((saliencyFineMap * 255).astype("uint8"), 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
 
         if view[3]:  # SALIENCY FOR INPUT
-            sample.requires_grad, model.detach, k = True, False, 3
             output = model(sample)
             attn = torch.stack(attns, dim=1).mean(dim=[2, 3])[0, -2]
-            topK = attn[1:].topk(k, -1, True)[1]
             a = torch.autograd.grad(output[:, 3], sample, retain_graph=True)[0].sum(dim=1)
-            b = F.interpolate(a.unsqueeze(0), scale_factor=0.05, mode='nearest')[0]
+            b = F.interpolate(a.unsqueeze(0), scale_factor=1.0, mode='nearest')[0]
 
         if view[4]: # ATTENTION MOVEMENT (FROM / TO)
             attn = torch.stack(attns).mean(dim=2).transpose(0,1) # (8 (B), 12 (L), 197(T_Q), 197(T_K))
