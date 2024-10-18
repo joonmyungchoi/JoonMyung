@@ -141,3 +141,5 @@ if __name__ == '__main__':
 # 1호기 : https://hooks.slack.com/services/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
 # 2호기 : https://hooks.slack.com/services/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
 # 3호기 : https://hooks.slack.com/services/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
+
+# TEST : curl -X POST -H 'Content-type: application/json' --data '{"text":"Hello, World!"}' https://hooks.slack.com/services/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

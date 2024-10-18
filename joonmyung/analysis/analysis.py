@@ -1,5 +1,6 @@
 from joonmyung.draw import saliency, overlay, drawImgPlot, unNormalize, drawHeatmap
 from joonmyung.analysis.model import JModel, ZeroShotInference
+from timm.models.vision_transformer import Attention
 from joonmyung.metric import targetPred, accuracy
 from joonmyung.analysis.dataset import JDataset
 from joonmyung.utils import read_classnames
@@ -10,7 +11,6 @@ from tqdm import tqdm
 import numpy as np
 import torch
 import cv2
-from timm.models.vision_transformer import Attention
 
 def anaModel(transformer_class):
     class VisionTransformer(transformer_class):
