@@ -14,9 +14,15 @@ import torch
 from timm.models.vision_transformer import Attention, Block
 from torch import nn
 
-class ResidualAttentionBlock(nn.Module):
+from joonmyung.compression.compression import token_compression
+
+
+class CompressBlock(nn.Module):
     def forward(self, x: torch.Tensor, attn_mask):
         x = x + self.attn(self.ln_1(x))
+
+        if self.info["compression"]["use"]:
+            x = token_compression(x, self.info["compression"], self.l)
         x = x + self.mlp(self.ln_2(x))
         return x
 
@@ -32,14 +38,13 @@ class CompressAttention(Attention):
                 attn = attn + self.info["compression"]["size"].log()[:, None, None, :, 0]
 
         attn = attn.softmax(dim=-1)
-        attn_ = attn
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
 
-        return x, attn_.mean(dim=[1,2]).detach()
+        return x
 
 
 def make_compression_class(transformer_class):
@@ -47,7 +52,7 @@ def make_compression_class(transformer_class):
         def resetCompression(self, compression = None):
             self.info = getattr(self, "info", {})
 
-            self.info["compression"] = getattr(self.info, "compression", {})
+            self.info["compression"] = self.info.get("compression", {})
             self.info["compression"]["attn"] = None
             self.info["compression"]["size"] = None
             self.info["compression"]["source"] = None
@@ -84,16 +89,16 @@ def make_compression_class(transformer_class):
 def apply_patch(
     model, compression
 ):
-    compressionVisionTransformer = make_compression_class(model.__class__)
+    model.__class__ = make_compression_class(model.__class__)
+    model.resetCompression(compression)
 
-    model.__class__ = compressionVisionTransformer
+    for i, resblock in enumerate(model.visual.transformer.resblocks):
+        resblock.__class__ = CompressBlock
+        resblock.attn.__class__ = CompressAttention
+        resblock.l = i
+        resblock.attn.info = resblock.info = model.info
 
-    # for module in model.modules():
-    #     if isinstance(module, Block):
-    #         module.__class__ = MCTFBlock
-    #         module._mctf_info = model._mctf_info
-    #     elif isinstance(module, Attention):
-    #         module.__class__ = MCTFAttention
+
 
 if __name__ == '__main__':
     import os
@@ -112,15 +117,18 @@ if __name__ == '__main__':
 
     modelMaker = JModel(num_classes, root_path, device=device)
     model = modelMaker.getModel(model_number, model_name)
-    apply_patch(model, None)
+
 
     data_path, num_classes, _, _ = data2path(dataset_name)
     dataset = JDataset(data_path, dataset_name, transform_type=2, device=device)
     dataloader = dataset.getAllItems(batch_size)
 
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.", device=device)
-    result = {"acc1": AverageMeter(), "acc5": AverageMeter()}
 
+    compression = [[1, 0, 10, 0, 1, 1], [1, 10, 25, 1], [0]]
+    apply_patch(model.model, compression)
+
+    result = {"acc1": AverageMeter(), "acc5": AverageMeter()}
     with torch.no_grad():
         for image, labels in tqdm(dataloader):
             B = image.shape[0]

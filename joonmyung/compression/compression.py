@@ -9,13 +9,13 @@ import math
 import torch
 from typing import Callable, List, Tuple, Union
 
-# A. COMMON   : [use, applied_layer, r_prune, r_merge, r_protected, proportional_attention, trace_source]
+# A. COMMON   : [use, r_prune, r_merge, r_protected, proportional_attention, trace_source]
 # B. MCTF     : [tau_sim, tau_info, tau_size, pooling_type]
 # C. VID-TLDR : [mass]
 # D. META     : size, attn, source
 
 def token_compression(x, info, layer):
-    if not info["use"] or layer not in info["applied_layer"]:
+    if not info["use"]:
         return x
 
     T = x.shape[1]
