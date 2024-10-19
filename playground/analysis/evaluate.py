@@ -1,7 +1,7 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "4"
 from joonmyung.analysis import JDataset, JModel, ZeroShotInference
-from joonmyung.meta_data import data2path, imnet_label
+from joonmyung.meta_data import data2path
 from joonmyung.utils import read_classnames
 from joonmyung.log import AverageMeter
 from joonmyung.metric import accuracy

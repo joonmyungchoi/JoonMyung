@@ -50,13 +50,9 @@ class CompressAttention(Attention):
 def make_compression_class(transformer_class):
     class CompressVisionTransformer(transformer_class):
         def resetCompression(self, compression = None):
-            self.info = getattr(self, "info", {})
-
-            self.info["compression"] = self.info.get("compression", {})
             self.info["compression"]["attn"] = None
             self.info["compression"]["size"] = None
             self.info["compression"]["source"] = None
-
             if compression:
                 self.info["compression"]["use"] = True
 
@@ -90,6 +86,10 @@ def apply_patch(
     model, compression
 ):
     model.__class__ = make_compression_class(model.__class__)
+    model.info = getattr(model, "info", {})
+    depth = len(model.visual.transformer.resblocks)
+    model.info["compression"] = {"use": False, "r_cls": 1, "applied_layer": set(range(depth)),
+                           "size": None, "attn": None, "source": None}
     model.resetCompression(compression)
 
     for i, resblock in enumerate(model.visual.transformer.resblocks):
@@ -117,12 +117,12 @@ if __name__ == '__main__':
 
     modelMaker = JModel(num_classes, root_path, device=device)
     model = modelMaker.getModel(model_number, model_name)
-
+    # "compression": {"use": False, "applied_layer": set(range(self.depth)) - set(self.return_index), "r_cls": 1,
+    #                 "size": None, "attn": None, "source": None}}
 
     data_path, num_classes, _, _ = data2path(dataset_name)
     dataset = JDataset(data_path, dataset_name, transform_type=2, device=device)
     dataloader = dataset.getAllItems(batch_size)
-
     model = ZeroShotInference(model, classnames, prompt="a photo of a {}.", device=device)
 
     compression = [[1, 0, 10, 0, 1, 1], [1, 10, 25, 1], [0]]
@@ -135,7 +135,5 @@ if __name__ == '__main__':
             image, labels = image.to(device), labels.to(device)
             logits = model(image)
             acc1, acc5 = accuracy(logits, labels, topk=(1, 5))
-            result["acc1"].update(acc1.item(), n=B)  # 68.2
+            result["acc1"].update(acc1.item(), n=B)  # 68.2 → 64.6
             result["acc5"].update(acc5.item(), n=B)
-
-
