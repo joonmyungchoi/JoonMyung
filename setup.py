@@ -7,7 +7,7 @@ def fetch_requirements(filename):
 
 setuptools.setup(
     name="joonmyung",
-    version="1.5.15",
+    version="1.6.0",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",
@@ -21,7 +21,7 @@ setuptools.setup(
                                     "*.egg-info.*"]),
     zip_safe=False,
     install_requires=[
-        fetch_requirements("requirements.txt"),
+        # fetch_requirements("requirements.txt"),
     ]
 )
 
@@ -29,7 +29,6 @@ setuptools.setup(
 # git commit
 # git push
 
-# rm -rf ./*.egg-info ./dist/*
-# python3 setup.py sdist; python -m twine upload dist/*
+# rm -rf ./*.egg-info ./dist/*; python3 setup.py sdist; python -m twine upload dist/*
 
 # ID:JoonmyungChoi

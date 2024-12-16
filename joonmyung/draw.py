@@ -27,7 +27,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 linecolor=None, linewidths=0.1, fontsize=30, r=[1,1],
                 cmap="Greys", cbar=True, border=False,
                 output_dir='./result', save_name=None, show=True,
-                vis_x= False, vis_y =  False):
+                vis_x= False, vis_y =  False, tqdm_disable=True):
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
     if p:
@@ -59,7 +59,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
     fig.set_size_inches(col * 8 * r[1], row * 8 * r[0])
     # fig.set_size_inches(8, 8)
     fig.patch.set_facecolor('white')
-    for e, matrix in enumerate(tqdm(matrixes)):
+    for e, matrix in enumerate(tqdm(matrixes, desc="drawHeatmap", disable=tqdm_disable)):
         if type(matrix) == torch.Tensor:
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
@@ -89,7 +89,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         plt.show()
 
 
-def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, markers=False, columns=None, p=False):
+def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, markers=False, columns=None, p=False, ):
     row = (len(datas) - 1) // col + 1
     title = title + list(range(len(title), len(datas) - len(title)))
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
@@ -131,7 +131,7 @@ def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, mark
     plt.tight_layout()
     plt.show()
 
-def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=False, c_sites={}, showfliers=True):
+def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=False, c_sites={}, showfliers=True, tqdm_disable=True):
     d2s = df[splitColName].unique()
     d1 = df['d1'].unique()[0]
     d2s = [d2 for d2 in d2s for c_site in c_sites[d1].keys() if c_site in d2]
@@ -140,7 +140,7 @@ def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=Fals
 
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
     fig.set_size_inches(col * 12, row * 12)
-    for e, d2 in enumerate(tqdm(d2s)):
+    for e, d2 in enumerate(tqdm(d2s, desc="drawBarChart", disable=tqdm_disable)):
         plt.title(d2, fontsize=20)
         ax = axes[e // col][e % col]
         temp = df.loc[df['d2'].isin([d2])]

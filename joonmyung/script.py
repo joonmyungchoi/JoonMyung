@@ -60,6 +60,7 @@ class GPU_Worker():
             if len(availGPUs) < self.need_gpu:
                 if self.p:
                     print(f"{count} | AVAIL/NEED/RUNNING GPUS : {list(availGPUs)}/{self.need_gpu}/{list(self.runGPUs.keys())}")
+                    # print(f"{count} | DONE/REMAIN GPUS : ")
                 time.sleep(self.waitTime)
             else:
                 break
@@ -88,16 +89,20 @@ class GPU_Worker():
             self.runGPUs[int(gpu)] = p
 
     def waitForEnd(self):
+        time.sleep(self.waitTimeInit)
+
         count = 0
-        while self.check_process():
+        while True:
+            self.check_process()
             if self.p:
                 count += 1
                 print(f"{count}  |  CURRENT RUNNING GPUS : {list(self.runGPUs.keys())}")
             time.sleep(self.waitTime)
+            if not len(self.runGPUs):
+                break
         return
 
-    def message(self, text):
-        url = "https://hooks.slack.com/services/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"
+    def message(self, text, url):
         payload = {"text": text}
         headers = {'Content-type': 'application/json'}
 
@@ -105,17 +110,22 @@ class GPU_Worker():
 
         return response
 
-def Process_Worker(processes, gpuWorker, m = None, p = False):
-    # TODO : 실험이 완전히 끝난 시간 체크할 필요가 존재함
+def Process_Worker(processes, gpuWorker, s = 0, url = None, server = None):
     start = time.localtime()
     print("------ Start Running!! : {} ------".format(time2str(start)))
+    if url:
+        gpuWorker.message(f"Experiments Start \n"  
+                          f"Server {server} \n",
+                          url = url)
 
     for i, process in enumerate(tqdm(processes)):
+        if type(process) == list:
+            process = " && ".join(process)
         gpus = gpuWorker.getGPU()
-        prefix = f"CUDA_VISIBLE_DEVICES={gpus} nohup sh -c \'"
-        suffix = f"\' > {i+1}:gpu{gpus}.log 2>&1 "
-        if p:
-            print("------ {}:GPU{}  {} ------".format(i + 1, gpus, prefix + process + suffix))
+        prefix = f"CUDA_VISIBLE_DEVICES={gpus} nohup bash -c '"
+        suffix = f"' > {s+i+1}:gpu{gpus}.log 2>&1 "
+
+        print(f"{i + 1}/{len(processes)} : GPU{gpus} {prefix + process + suffix}")
         session = subprocess.Popen(prefix + process + suffix, shell=True)
         gpuWorker.register_process(gpus, session)
     gpuWorker.waitForEnd()
@@ -124,10 +134,11 @@ def Process_Worker(processes, gpuWorker, m = None, p = False):
     print("------ End Running!!   : {} ------".format(time2str(end)))
     training_time = datetime.timedelta(seconds=time.mktime(end) - time.mktime(start))
     print(f"Time 1/all :  {training_time}/{training_time / len(processes)} ------")
-    if m:
-        gpuWorker.message(f"Experiments Finished {m} : "  
-                          f"Time 1/all : {training_time}/{training_time / len(processes)}"
-                          )
+    if url:
+        gpuWorker.message(f"Experiments Finished \n"  
+                          f"Server {server} \n"
+                          f"Time 1/all : {training_time / len(processes)} / {training_time}",
+                          url = url)
 
 
 if __name__ == '__main__':

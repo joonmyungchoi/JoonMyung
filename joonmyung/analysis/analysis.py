@@ -16,9 +16,14 @@ def anaModel(transformer_class):
     class VisionTransformer(transformer_class):
         info_key = []
         def resetInfo(self):
-            self.info = {n: [] for n in self.info_key}
+            if hasattr(self, "info"):
+                for k in self.info_key: self.info[k] = []
+            else:
+                self.info = {n: [] for n in self.info_key}
 
         def createHook(self, hooks):
+            if not hooks:
+                return
             [self.info_key.append(hook[3]) for hook in hooks]
             for name, module in self.named_modules():
                 for idx, hook in enumerate(hooks):

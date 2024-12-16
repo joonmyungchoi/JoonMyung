@@ -1,8 +1,5 @@
-
-
 from timm.models.vision_transformer import Attention, Block
 from collections import OrderedDict
-from joonmyung.clip import clip
 from timm import create_model
 from pprint import pprint
 import glob
