@@ -11,23 +11,13 @@ def data2path(dataset,
               conference="", wandb_version="", wandb_name="", hub_num = 1):
 
     hostname = socket.gethostname()
-    server   = hostname if "mlv" in hostname \
-                else "kakao" if "dakao" in hostname \
-                    else "kisti_"+hostname
+    server   = hostname
+
     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
     print(server, " : ", hostname, " : ", getpass.getuser())
     print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-    if "kakao" in server:
-        data_path  = "/data/opensets"
-        output_dir = f"/data/project/rw/{getpass.getuser()}/conference"
-    elif "mlv" in server:
-        data_path  = f"/hub_data{hub_num}/{getpass.getuser()}/data"
-        output_dir = f"/hub_data{hub_num}/{getpass.getuser()}/conference"
-    elif "kisti" in server:
-        data_path  = f"/scratch/{getpass.getuser()}/data"
-        output_dir = f"/scratch/{getpass.getuser()}/result"
-    else:
-        raise ValueError
+    data_path  = f"/hub_data{hub_num}/{getpass.getuser()}/data"
+    output_dir = f"/hub_data{hub_num}/{getpass.getuser()}/conference"
 
     if dataset in ["imagenet", "IMNET"]:
         data_path = os.path.join(data_path, "imagenet") if "kakao" not in server else os.path.join(data_path, "imagenet-pytorch")

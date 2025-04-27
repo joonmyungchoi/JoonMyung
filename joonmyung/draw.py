@@ -21,6 +21,65 @@ import cv2
 import PIL
 import os
 
+def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, HW = 14, dtype=torch.float32, BL=False):
+    # values : (L, B, T)
+    values = values.to(dtype)
+    if layers is not None:
+        values = values[layers]
+
+    if normalize:
+        values = (values - values.min(dim=dim, keepdim=True)[0]) / (values.max(dim=dim, keepdim=True)[0] - values.min(dim=dim, keepdim=True)[0])
+        values = values / values.sum(dim=dim, keepdim=True)
+    # TODO : BATCH-SIZE
+    if quantile: values = values.clamp(values.quantile(quantile, dim=dim, keepdim=True), values.quantile(1-quantile, dim=dim, keepdim=True))
+    if sort: values = torch.argsort(values, dim=dim, descending = descending).argsort(dim=dim, descending=descending)
+
+    if BL: values = values.transpose(0, 1)
+    return values.reshape(-1, HW, HW).to(dtype) # LBF
+
+def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
+                   col = 1, save_name=None, save = 1, border = False,  # COMMON
+                   fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
+                   show= True, deactivate=False
+                   ):
+    if deactivate:
+        return
+
+    if draw_type:
+        if img is not None:
+            B = img.shape[0]
+            if data_type == 1:
+                data = overlay(img, data)
+            if data_type == 2:
+                mask = generate_mask(data.reshape(-1, B, 16, 16), topK=K)
+                data = mask_to_image(img, mask)
+
+        drawImgPlot(data, col=col, border=border,
+                    save_name=save_name if save else None, show=show)
+    else:
+        drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
+                save_name=save_name if save else None, show=show)
+
+
+def generate_mask(data, topK=10):
+    shape = data.shape
+    flattened = data.view(data.shape[0], -1)
+    sorted_indices = torch.argsort(flattened, dim=1)
+    top_K_indices = sorted_indices[:, :topK]
+    mask = torch.ones_like(flattened, dtype=torch.float32)
+    mask.scatter_(1, top_K_indices, 0)
+    return mask.view(shape)
+
+def mask_to_image(image, mask):
+    B, C, H, W = image.shape # (13, 3, 448, 448)
+    L, B, M_H, M_W = mask.shape
+
+    mask_resized = F.interpolate(mask.float(), size=(H, W), mode='nearest').reshape(L, B, 1, H, W)
+    mask_3channel = mask_resized.expand(-1, -1, 3, -1, -1)
+    masked_image = image[None] * mask_3channel
+
+    return masked_image.reshape(-1, C, H, W)
+
 
 def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 vmin=None, vmax=None, xticklabels=False, yticklabels=False,
@@ -52,29 +111,26 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         print("    |- cbar        : 오른쪽 바 On/Off")
         print("    |- xticklabels : x축 간격 (False, 1,2,...)")
         print("    |- yticklabels : y축 간격 (False, 1,2,...)")
-
+    h, w = matrixes[0].shape
     if title:
         title = title + list(range(len(title), len(matrixes) - len(title)))
-    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
-    fig.set_size_inches(col * 8 * r[1], row * 8 * r[0])
-    # fig.set_size_inches(8, 8)
+    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False,
+                             figsize = (col * w * r[1], row * h * r[0]),
+                             gridspec_kw={"wspace": 0.1, 'hspace': 0.1})
     fig.patch.set_facecolor('white')
+
     for e, matrix in enumerate(tqdm(matrixes, desc="drawHeatmap", disable=tqdm_disable)):
         if type(matrix) == torch.Tensor:
             matrix = matrix.detach().cpu().numpy()
         ax = axes[e // col][e % col]
-        res = sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
+        sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
                           , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
                           , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
                           , ax=ax)
 
-        # if border:
-        #     for _, spine in res.spines.items():
-        #         spine.set_visible(True)
         if not border:
             ax.set_axis_off()
-        # if columns:
-        #     ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
+
         if not vis_x: ax.xaxis.set_visible(False)
         if not vis_y: ax.yaxis.set_visible(False)
 
@@ -244,7 +300,6 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
 
 
 
-
 def data2PIL(datas):
     if type(datas) == torch.Tensor:
         if len(datas.shape) == 2:
@@ -260,16 +315,15 @@ def data2PIL(datas):
             pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)   # 0.29ms
         else:
             pils = datas
-    elif type(datas) == PIL.JpegImagePlugin.JpegImageFile \
-         or type(datas) == PIL.Image.Image:
+    elif type(datas) == PIL.Image.Image:
         pils = datas
     else:
         raise ValueError
+
     return pils
 
-
 def drawImgPlot(datas, col=1, title:str=None, columns=None, showRows:list=None,
-                output_dir='./', save_name=None, show=True, fmt=1,
+                output_dir='./', save_name=None, show=True,
                 vis_x = False, vis_y = False, border=False, p=False):
     if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
 
@@ -292,9 +346,7 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None, showRows:list=None,
         elif data.shape[-1] == 3: #
             ax.imshow(data)
         elif data.shape[-1] == 1: #
-            ax.imshow(data, cmap="gray")
-            # sns.heatmap(data[:,:,0], annot=True, fmt=f".{fmt}f", cmap="Greys"
-            #             , yticklabels=False, xticklabels=False, ax=ax, vmax=1.0, vmin=0.0)
+            ax.imshow(data, cmap="Greys")
         if not border:
             ax.set_axis_off()
         if columns:
@@ -340,7 +392,7 @@ def overlay(imgs, attnsL, dataset="imagenet"):
             results.append(result)
     return results
 
-def unNormalize(image, dataset="imagenet"):
+def unNormalize(image, dataset="imagenet", reverse=False):
     # images : (B, C, H, W)
     if dataset == "imagenet":
         mean, std = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
@@ -350,9 +402,15 @@ def unNormalize(image, dataset="imagenet"):
         return image
 
     result = copy.deepcopy(image)
+
     for c, (m, s) in enumerate(zip(mean, std)):
-        result[:, c].mul_(s).add_(m)
+        if reverse:
+            result[:, c].sub_(m).div_(s)
+        else:
+            result[:, c].mul_(s).add_(m)
+
     return result
+
 
 def show_mask_on_image(img, mask):
     img = np.float32(img) / 255

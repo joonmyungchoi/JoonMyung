@@ -24,16 +24,16 @@ def numel(model,
     return round(params, round_num)
 
 @torch.no_grad()
-def flops(model, size, round_num=1, eval=True, fp16=False, device="cuda", **kwargs):
+def flops(model, size, round_num=1, eval=True, fp16=False, p = False, device="cuda", **kwargs):
     if eval: model.eval()
     with torch.cuda.amp.autocast(enabled=fp16):
         inputs = torch.randn(size, device=device, requires_grad=True)
         with torch.no_grad():
             flops = FlopCountAnalysis(model, (inputs, *kwargs))
             flops_num = flops.total() / 1000000000
-
-    print(flop_count_table(flops))
-    print(f"fvcore flops : {flops_num}")
+    if p:
+        print(flop_count_table(flops))
+        print(f"fvcore flops : {flops_num}")
 
     return round(flops_num, round_num)
 

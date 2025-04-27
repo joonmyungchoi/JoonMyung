@@ -21,10 +21,19 @@ class JDataset():
                     "num_classes"   : 1000,
                     "data_types"    : ["val", "train"],
                     "label_name"    : imnet_label,
-                    "distributions" : {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]}, # DEIT PAPER
-                    # "distributions" : {"mean": [0.48145466, 0.4578275, 0.40821073], "std": [0.26862954, 0.26130258, 0.27577711]}, # CLIP
+                    "distributions" : {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]},
                     "size": (224, 224)
                     },
+
+                "imagenet_clip": {
+                    "num_classes": 1000,
+                    "data_types": ["val", "train"],
+                    "label_name": imnet_label,
+                    "distributions" : {"mean": [0.48145466, 0.4578275, 0.40821073], "std": [0.26862954, 0.26130258, 0.27577711]},
+                    "size": (224, 224)
+                },
+
+
                 "cifar100" : {
                     "num_classes" : 100,
                     "data_types": ["test", "train"],
@@ -45,8 +54,12 @@ class JDataset():
         size                = size if size else setting["size"]
 
         self.transform = [
-                transforms.Compose([transforms.Resize(256, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]), # DEIT PAPER
-                transforms.Compose([transforms.Resize(256, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
+                # DEIT
+                transforms.Compose([transforms.Resize((256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
+                transforms.Compose([transforms.Resize((256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
+                # CLIP
+                transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
+                transforms.Compose([transforms.Resize((256, 256), interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
                 transforms.Compose([transforms.Resize(224, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor(), transforms.Normalize(self.distribution["mean"], self.distribution["std"])]),
                 transforms.Compose([transforms.Resize(224, interpolation=InterpolationMode.BICUBIC), transforms.CenterCrop(size), transforms.ToTensor()]),
                 transforms.Compose([transforms.ToTensor()])
@@ -59,24 +72,30 @@ class JDataset():
         # self.img_paths   = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, "*", "*")))]
         # self.img_paths   = [[path, idx] for idx, label_path in enumerate(self.label_paths) for path in sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*")))]
         self.img_paths = [sorted(glob.glob(os.path.join(self.data_path, self.data_type, label_path, "*"))) for label_path in self.label_paths]
-
+        self.img_len = [len(labels) for labels in self.img_paths]
+        self.img_cum_len = torch.Tensor([0] + [sum(self.img_len[:i+1]) for i in range(len(self.img_len))])
 
     def __getitem__(self, idx):
-        label_num, img_num = idx
+        if type(idx) == int:
+            label_num = (self.img_cum_len <= idx).sum().item() - 1
+            img_num   =  idx - int(self.img_cum_len[label_num].item())
+        else:
+            label_num, img_num = idx
         img_path = self.img_paths[label_num][img_num]
         sample = default_loader(img_path)
         sample = self.transform[self.transform_type](sample)
 
-        return sample[None].to(self.device), torch.tensor(label_num).to(self.device), self.label_name[int(label_num)]
+        return sample[None].to(self.device), torch.tensor(label_num).to(self.device), self.label_name[int(label_num)], img_path
 
     def getItems(self, indexs):
-        ds, ls, lns = [], [], []
+        ds, ls, lns, ips = [], [], [], []
         for index in indexs:
-            d, l, ln = self.__getitem__(index)
+            d, l, ln, ip = self.__getitem__(index)
             ds.append(d)
             ls.append(l)
             lns.append(ln)
-        return torch.cat(ds, dim=0), torch.stack(ls, dim=0), lns
+            ips.append(ip)
+        return torch.cat(ds, dim=0), torch.stack(ls, dim=0), lns, ips
 
     def getAllItems(self, batch_size=32):
         dataset = create_dataset(
@@ -99,7 +118,7 @@ class JDataset():
         return c_i
 
     def __len__(self):
-        return
+        return self.img_cum_len[-1]
 
 
     def validation(self, data):
