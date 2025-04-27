@@ -7,7 +7,7 @@ def fetch_requirements(filename):
 
 setuptools.setup(
     name="joonmyung",
-    version="1.6.0",
+    version="1.6.1",
     author="JoonMyung Choi",
     author_email="pizard@korea.ac.kr",
     description="JoonMyung's Library",
@@ -16,7 +16,7 @@ setuptools.setup(
     packages=find_packages(exclude=["playground",
                                     "playground.*",
                                     "99_backup",
-                                    "99_backup.*",
+                                    "99_backup.*",t-
                                     "*.egg-info"
                                     "*.egg-info.*"]),
     zip_safe=False,

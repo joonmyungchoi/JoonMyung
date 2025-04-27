@@ -43,6 +43,7 @@ def anaModel(transformer_class):
         def forward(self, *args, **kwdargs):
             self.resetInfo()
             return super().forward(*args, **kwdargs)
+
         def encode_image(self, *args, **kwdargs):
             self.resetInfo()
             return super().encode_image(*args, **kwdargs)
