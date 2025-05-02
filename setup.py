@@ -16,7 +16,7 @@ setuptools.setup(
     packages=find_packages(exclude=["playground",
                                     "playground.*",
                                     "99_backup",
-                                    "99_backup.*",t-
+                                    "99_backup.*",
                                     "*.egg-info"
                                     "*.egg-info.*"]),
     zip_safe=False,

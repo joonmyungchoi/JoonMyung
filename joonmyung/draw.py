@@ -21,7 +21,7 @@ import cv2
 import PIL
 import os
 
-def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, HW = 14, dtype=torch.float32, BL=False):
+def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, H = 14, W = 14, dtype=torch.float32, BL=False):
     # values : (L, B, T)
     values = values.to(dtype)
     if layers is not None:
@@ -35,7 +35,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
     if sort: values = torch.argsort(values, dim=dim, descending = descending).argsort(dim=dim, descending=descending)
 
     if BL: values = values.transpose(0, 1)
-    return values.reshape(-1, HW, HW).to(dtype) # LBF
+    return values.reshape(-1, H, W).to(dtype) # LBF
 
 def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
@@ -47,11 +47,10 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
 
     if draw_type:
         if img is not None:
-            B = img.shape[0]
             if data_type == 1:
                 data = overlay(img, data)
             if data_type == 2:
-                mask = generate_mask(data.reshape(-1, B, 16, 16), topK=K)
+                mask = generate_mask(data, topK=K)
                 data = mask_to_image(img, mask)
 
         drawImgPlot(data, col=col, border=border,
@@ -61,21 +60,28 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
                 save_name=save_name if save else None, show=show)
 
 
-def generate_mask(data, topK=10):
-    shape = data.shape
+def generate_mask(data, topK=10, F = 1):
+    shape, dtype = data.shape, data.dtype # (L * B, T, T)
+    data = data.reshape(-1, F, *shape[-2:]) # (L * B, T, T)
     flattened = data.view(data.shape[0], -1)
-    sorted_indices = torch.argsort(flattened, dim=1)
-    top_K_indices = sorted_indices[:, :topK]
-    mask = torch.ones_like(flattened, dtype=torch.float32)
-    mask.scatter_(1, top_K_indices, 0)
+
+    if topK == -1:
+        mask = torch.stack([(f > f.mean()) for f in flattened]).to(dtype=dtype)
+    else:
+        sorted_indices = torch.argsort(flattened, dim=1)
+        top_K_indices = sorted_indices[:, :topK]
+        mask = torch.ones_like(flattened, dtype=dtype)
+        mask.scatter_(1, top_K_indices, 0)
     return mask.view(shape)
 
 def mask_to_image(image, mask):
-    B, C, H, W = image.shape # (13, 3, 448, 448)
-    L, B, M_H, M_W = mask.shape
+    Fr, C, H, W = image.shape # (1, 3, 448, 448)
+    if len(mask.shape) == 3:
+        mask = mask.reshape(-1, Fr, *mask.shape[-2:])
+    L, Fr, M_H, M_W = mask.shape  #
 
-    mask_resized = F.interpolate(mask.float(), size=(H, W), mode='nearest').reshape(L, B, 1, H, W)
-    mask_3channel = mask_resized.expand(-1, -1, 3, -1, -1)
+    mask_resized = F.interpolate(mask.float(), size=(H, W), mode='nearest').reshape(L, Fr, 1, H, W) # (L, B, 1, H, W)
+    mask_3channel = mask_resized.expand(-1, -1, 3, -1, -1) # (L, B, 3, H, W)
     masked_image = image[None] * mask_3channel
 
     return masked_image.reshape(-1, C, H, W)
@@ -88,7 +94,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
                 output_dir='./result', save_name=None, show=True,
                 vis_x= False, vis_y =  False, tqdm_disable=True):
     row = (len(matrixes) - 1) // col + 1
-    annot = True if fmt > 0 else False
+    annot = True if fmt != None else False
     if p:
         print("|- Parameter Information")
         print("  |- Data Info (G, H, W)")
@@ -125,7 +131,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         ax = axes[e // col][e % col]
         sns.heatmap(pd.DataFrame(matrix), annot=annot, fmt=".{}f".format(fmt), cmap=cmap
                           , vmin=vmin, vmax=vmax, yticklabels=yticklabels, xticklabels=xticklabels
-                          , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize / np.sqrt(len(matrix))}
+                          , linewidths=linewidths, linecolor=linecolor, cbar=cbar, annot_kws={"size": fontsize}
                           , ax=ax)
 
         if not border:
@@ -374,15 +380,18 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 
 
-def overlay(imgs, attnsL, dataset="imagenet"):
+def overlay(imgs, attnsL, dataset=None):
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))
-    if type(attnsL) == list:   attnsL = torch.stack(attnsL, 0)
-    if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0) #
-    if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0) # L, B, h, w
-    if len(imgs.shape)   == 3: imgs = imgs.unsqueeze(0)     # B, C, H, W
+    if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0)  # B, C, H, W
+    B = imgs.shape[0]
     if dataset:
-        imgs  = unNormalize(imgs, dataset)
+        imgs = unNormalize(imgs, dataset)
+
+    if type(attnsL) == list:   attnsL = torch.stack(attnsL, 0)
+    if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
+    if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0)
+    attnsL = attnsL.reshape(-1, B, *attnsL.shape[-2:]) # L, B, H, W
 
     results = []
     for attns in attnsL:
@@ -390,7 +399,7 @@ def overlay(imgs, attnsL, dataset="imagenet"):
             result = overlay_mask(to_pil_image(img), to_pil_image(normalization(attn, type=0), mode='F')) # (3, 224, 224), (1, 14, 14)
             # plt.imshow(overlay_mask(to_pil_image(dataset.unNormalize(samples)[0]), to_pil_image(normalization(a[:, 0]), mode='F'), alpha=0.5))
             results.append(result)
-    return results
+    return results # (L * B) * overlay
 
 def unNormalize(image, dataset="imagenet", reverse=False):
     # images : (B, C, H, W)
