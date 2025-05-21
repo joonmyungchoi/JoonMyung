@@ -183,20 +183,18 @@ def get_objective_score(score_attn, r_cls):
 
 
 
-def parse_r(num_layers: int, r: Union[List[int], Tuple[int, float], int]) -> List[int]:
-    inflect = 0
-    if isinstance(r, list):
-        if len(r) < num_layers:
-            r = r + [0] * (num_layers - len(r))
-        return list(r)
-    elif isinstance(r, tuple):
-        r, inflect = r
+def ANAsimilarity(x1, x2, info, dim=-1, idx = 1):
+    diff = torch.norm(x1 - x2, p=2, dim=dim).detach()
+    norm1 = torch.norm(x1, p=1, dim=dim).detach()
+    norm2 = torch.norm(x1, p=2, dim=dim).detach()
+    if info["analysis"]["use"]:
+        info["analysis"]["diff"][idx].append(diff.detach())
+        info["analysis"]["norm1"][idx].append(norm1.detach())
+        info["analysis"]["norm2"][idx].append(norm2.detach())
 
-    min_val = int(r * (1.0 - inflect))
-    max_val = 2 * r - min_val
-    step = (max_val - min_val) / (num_layers - 1)
-
-    return [int(min_val + step * i) for i in range(num_layers)]
-
+    if info[f"compression"]["use"]:
+        info[f"compression"]["diff"] = diff.detach()
+        info[f"compression"]["norm1"] = norm1.detach()
+        info[f"compression"]["norm2"] = norm2.detach()
 
 

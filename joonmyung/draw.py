@@ -491,3 +491,4 @@ def make_visualization(
     vis_prune = to_np((1 - source.sum(dim=1)).reshape(12, ph, pw)) if prune else None
 
     return vis_prune, vis_merge  # (12, 3, 224, 224)
+

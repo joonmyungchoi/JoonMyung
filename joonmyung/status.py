@@ -18,7 +18,7 @@ def selectGPU(gpuNum, p=True):
         print('Current cuda device ', torch.cuda.current_device())
 
 
-def fixSeed(seed, fast=False, p = True):
+def fixSeed(seed, fast=True, p = True):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
