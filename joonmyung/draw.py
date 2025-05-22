@@ -35,7 +35,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
     if sort: values = torch.argsort(values, dim=dim, descending = descending).argsort(dim=dim, descending=descending)
 
     if BL: values = values.transpose(0, 1)
-    return values.reshape(-1, H, W).to(dtype) # LBF
+    return values.reshape(-1, H, W).to(dtype).detach().cpu() # LBF
 
 def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
@@ -46,6 +46,9 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
         return
 
     if draw_type:
+        drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
+                    save_name=save_name if save else None, show=show)
+    else:
         if img is not None:
             if data_type == 1:
                 data = overlay(img, data)
@@ -55,9 +58,7 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
 
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show)
-    else:
-        drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
-                save_name=save_name if save else None, show=show)
+
 
 
 def generate_mask(data, topK=10, F = 1):
@@ -306,46 +307,37 @@ def saliency(attentions=None, gradients=None, head_fusion="mean",
 
 
 
-def data2PIL(datas):
-    if type(datas) == torch.Tensor:
-        if len(datas.shape) == 2:
-            pils = datas.unsqueeze(-1).detach().cpu()
-        if len(datas.shape) == 3:
-            pils = datas.permute(1, 2, 0).detach().cpu()
-        elif len(datas.shape) == 4:
-            pils = datas.permute(0, 2, 3, 1).detach().cpu()
+def data2PIL(datas, RGB = True):
+    # RGB : (B, C, H, W)
+
+    if type(datas) == torch.Tensor: # (C, H, W)
+        if len(datas.shape) == 2: datas = datas[None]
+        pils = datas.permute(1, 2, 0) if RGB else datas # (H, W, C)
     elif type(datas) == np.ndarray:
-        if len(datas.shape) == 3: datas = np.expand_dims(datas, axis=0)
-        if datas.max() <= 1:
-            # image = Image.fromarray(image)                 # 0.32ms
-            pils = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB)   # 0.29ms
-        else:
-            pils = datas
+        datas = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB) if datas.max() <= 1 else datas
+        pils = datas.transpose(1, 2, 0) if RGB else datas # (H, W, C)
     elif type(datas) == PIL.Image.Image:
         pils = datas
     else:
         raise ValueError
 
-    return pils
+    return pils # (H, W, C)
 
-def drawImgPlot(datas, col=1, title:str=None, columns=None, showRows:list=None,
+def drawImgPlot(datas, col=1, title:str=None, columns=None,
                 output_dir='./', save_name=None, show=True,
-                vis_x = False, vis_y = False, border=False, p=False):
-    if type(datas) != list or 'shape' not in dir(datas[0]) : datas = [datas]
+                RGB = True,
+                vis_x = False, vis_y = False, border=False):
+    # datas : (B, C, H, W) or (B, H, W)
+    if type(datas[0]) != PIL.Image.Image and len(datas.shape) == 3:
+        datas = datas[:, None]
 
-    if showRows is not None:
-        for d in range(len(datas)):
-            datas[d] = datas[d][showRows]
-    data_num = len(datas[0]) * len(datas)
-    row = (data_num - 1) // col + 1
-
+    row = (len(datas) - 1) // col + 1
     fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
     fig.set_size_inches(col * 8, row * 8)
     if title: fig.suptitle(title, fontsize=16)
-    for i in range(data_num):
+    for i, data in enumerate(datas):
         r_num, c_num   = i // col, i % col
-        dr_num, dc_num = i // len(datas), i % len(datas)
-        data = data2PIL(datas[dc_num][dr_num])
+        data = data2PIL(data, RGB) # (H, W, C)
         ax = axes[r_num][c_num]
         if "shape" not in dir(data): # IMAGE
             ax.imshow(data)

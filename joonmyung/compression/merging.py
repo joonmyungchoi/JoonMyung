@@ -35,7 +35,7 @@ def token_compression(x, info, layer, others = None):
 
     scores = info["importance"][None, :, None]
 
-    if info["source"] is None: info["source"] = torch.zeros((B, T1), dtype=torch.bool, device=x.device)
+    if info["source"] is None: info["source"] = info["source"] = torch.zeros((B, T1), dtype=torch.bool, device=x.device)
     if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
     if r_prune or info["r_half"] == layer:
@@ -45,6 +45,19 @@ def token_compression(x, info, layer, others = None):
                                             scores=scores,
                                             source=info["source"],
                                             others = others)
+    if r_merge:
+        merge = merging(
+            x,
+            r_merge       = r_merge,
+            scores=scores,
+            tau_sim       = info["tau_sim"],
+            tau_info      = info["tau_info"],
+            tau_size      = info["tau_size"],
+            mass          = info["mass"],
+            size          = info["size"],
+        )
+
+        x, info["size"], info["source"] = merge_wavg(merge, x, info["size"], scores, pooling_type=info["pooling_type"], source=info["source"])
 
     return x.squeeze(0) if TD else x, others
 
@@ -150,6 +163,8 @@ def pruning(
         mask_block = (scores_block >= scores_block.mean(dim=-1)).reshape(1, -1, 1, 1)
         x_block = x.reshape(b, -1, 4, d)
         x_unprune = x_block.masked_select(mask_block).view(b, -1, d)
+        if source is not None:
+            source = source.masked_select(mask).view(b, -1, source.shape[-1])
 
         if others is not None:
             cu_lens, rotary_pos_emb = others
