@@ -45,7 +45,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         importance = None
         if enc:
             if attn is not None and info["compression"]["info_type"] == 0: # CLS
-                importance = attn.mean(dim=(0, 1))
+                importance = attn.mean(dim=(-3, -2))
             elif attn is not None and info["compression"]["info_type"] == 1: # vid-TLDR
                 importance = getVidTLDR(attn)
             elif feat is not None and info["compression"]["info_type"] == 2: # norm2

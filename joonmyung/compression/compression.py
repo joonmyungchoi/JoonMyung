@@ -23,7 +23,7 @@ def token_compression(x, info, layer, others = None):
     B, T1, D = x.shape
     r_prune = info["r_prune"][layer] if type(info["r_prune"]) == list else info["r_prune"]
     r_prune = int(T1 * r_prune) if r_prune < 1 else r_prune
-    r_prune = max(min(r_prune, T1 // 2, T1 - info["r_protected"]), 0)
+    r_prune = max(min(r_prune, T1, T1 - info["r_protected"]), 0)
     T2 = T1 - r_prune
 
     r_merge = info["r_merge"][layer] if type(info["r_merge"]) == list else info["r_merge"]
@@ -34,7 +34,7 @@ def token_compression(x, info, layer, others = None):
     if (not r_prune and not r_merge) and not half:
         return x.squeeze(0) if TD else x, others
 
-    scores = info["importance"][None, :, None]
+    scores = info["importance"]
 
     if info["source"] is None: info["source"] = torch.ones((B, (T1 // info["group_num"]) ), dtype=torch.bool, device=x.device)
     if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
@@ -151,20 +151,16 @@ def pruning(
     others             : [] = None):
     b, t, d = x.shape
 
+    scores_block = scores.reshape(b, -1, group_num).mean(dim=-1)
+    x_block = x.reshape(b, -1, group_num, d)
     if half: # REMOVE HALF
-        scores_block = scores.reshape(-1, group_num).mean(dim=-1)
         mask_block = (scores_block >= scores_block.mean(dim=-1))
-        x_block = x.reshape(b, -1, group_num, d)
-        x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d) # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
-
     else:
-        scores_block = scores.reshape(1, -1, group_num).mean(dim=-1)
         idx_unprune = scores_block.topk((t - r_prune) // group_num, dim=1, largest=True, sorted=False).indices  # (b, t - r_prune)
-
         mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
         mask_block.scatter_(1, idx_unprune, True)
-        x_block = x.reshape(b, -1, group_num, d)
-        x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d)  # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
+
+    x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d)  # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
 
     if others is not None:
         cu_lens, rotary_pos_emb = others
