@@ -45,6 +45,7 @@ def token_compression(x, info, layer, others = None):
                                             half=half,
                                             scores=scores,
                                             source=info["source"],
+                                            cls=info["cls"],
                                             group_num=info["group_num"],
                                             others = others)
 
@@ -146,15 +147,16 @@ def pruning(
     half               : bool,
     scores             : torch.Tensor,
     source             : torch.Tensor,
-
+    cls                : False,
     group_num          : int = 1,
     others             : [] = None):
     b, t, d = x.shape
 
-    scores_block = scores.reshape(b, -1, group_num).mean(dim=-1)
+    scores_block = scores.reshape(b, -1, group_num).mean(dim=-1) # (B, T)
+    if cls: scores_block[:, 0] = math.inf
     x_block = x.reshape(b, -1, group_num, d)
     if half: # REMOVE HALF
-        mask_block = (scores_block >= scores_block.mean(dim=-1))
+        mask_block = (scores_block >= scores_block[:,1:].mean(dim=-1) if cls else scores_block.mean(dim=-1))
     else:
         idx_unprune = scores_block.topk((t - r_prune) // group_num, dim=1, largest=True, sorted=False).indices  # (b, t - r_prune)
         mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
@@ -170,7 +172,7 @@ def pruning(
         others = [cu_lens, rotary_pos_emb]
 
     if source is not None:
-        source = source * mask_block.reshape(1, -1)
+         source = source * mask_block.reshape(1, -1)
 
     x = x_unprune
 

@@ -25,11 +25,15 @@ def getVidTLDR(attn, start = None, end = None):
     scores = (attn * torch.log(attn)).sum(dim=2)[start:end]
     return scores
 
-def getAnalysis(info, attn = None, feat = None, enc= False):
+def getAnalysis(info, attn = None, feat = None, enc= False, cls = False):
     if info["analysis"]["use"]:
         if enc:
-            if attn is not None:
-                info["analysis"]["cls"].append(attn.mean(dim=(0, 1)))
+            if attn is not None: # (B, H, T, T)
+                attn_cls = attn[:, :, 0] if cls else attn.mean(dim=(2))
+                info["analysis"]["cls"].append(attn_cls.mean(dim=1))
+
+                attn_vidTLDR = (attn * torch.log(attn)).sum(dim=2)
+                info["analysis"]["vidTLDR"].append(attn_vidTLDR.mean(dim=1))
             if feat is not None:
                 info["analysis"]["norm2"].append(torch.norm(feat, p=2, dim=-1))
         else:
@@ -64,16 +68,13 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
 def resetInfo(info, compression = None):
     if info["analysis"]["use"]:
-        info["analysis"]["attn"] = []
-        info["analysis"]["hidden_states"] = []
+        info["analysis"]["hidden_states"]      = []
 
-        info["analysis"]["diff"] = []
-        info["analysis"]["norm1"] = []
-        info["analysis"]["norm2"] = []
-
-        info["analysis"]["cls"] = []
-        info["analysis"]["fastV"] = []
+        info["analysis"]["cls"]      = []
+        info["analysis"]["vidTLDR"]  = []
+        info["analysis"]["fastV"]    = []
         info["analysis"]["fitPrune"] = []
+        info["analysis"]["norm2"] = []
 
     if compression is not None:
         info["compression"]["use"] = True
