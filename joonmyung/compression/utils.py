@@ -1,7 +1,7 @@
 from collections import defaultdict
 import torch
 
-def getImpFitprune(attn, start, end):
+def getImpFitprune(attn, start=None, end=None):
     # attn : (B, H, T, T)
     attn_headmax = attn.max(dim=1).values
 
@@ -10,18 +10,17 @@ def getImpFitprune(attn, start, end):
     importance  = attn_self * attn_cross
     return importance
 
-def getImpFastV(attn, start=0, end=-1):
+def getImpFastV(attn, start=None, end=None):
     # attn : (B, H, T, T)
     attn_headavg = attn.mean(dim=1)
     importance = attn_headavg[:, -1, start:end]
 
     return importance
 
-
-def getl2compress(feat, start = 0, end = -1):
+def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[start:end]
 
-def getVidTLDR(attn, start = 0, end = -1):
+def getVidTLDR(attn, start = None, end = None):
     attn = attn.mean(dim=1)
     scores = (attn * torch.log(attn)).sum(dim=2)[start:end]
     return scores
@@ -40,8 +39,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info["analysis"]["fitPrune"].append(getImpFitprune(attn, start, end))
 
             if feat is not None:
-                info["analysis"]["norm2"].append(torch.norm(feat, p=2, dim=-1)[:, start:end])
-
+                info["analysis"]["norm2"].append(getL2Norm(feat, start, end))
+                info["analysis"]["hidden_states"].append(feat)
     if info["compression"]["use"]:
         importance = None
         if enc:
@@ -50,7 +49,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
             elif attn is not None and info["compression"]["info_type"] == 1: # vid-TLDR
                 importance = getVidTLDR(attn)
             elif feat is not None and info["compression"]["info_type"] == 2: # norm2
-                importance = getl2compress(feat)
+                importance = getL2Norm(feat)
 
         else:
             start, end = info["analysis"]["img_idx"]
@@ -59,7 +58,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
             elif info["compression"]["info_type"] == 3 and attn != None: # fitPrune
                 importance = getImpFastV(attn, start, end)
             elif info["compression"]["info_type"] == 4 and feat != None: # norm2
-                importance = getl2compress(feat, start, end)
+                importance = getL2Norm(feat, start, end)
 
         if importance is not None: info["compression"]["importance"] = importance
 
@@ -83,9 +82,12 @@ def resetInfo(info, compression = None):
         info["compression"]["r_prune"] = compression[0][1]
         info["compression"]["r_protected"] = compression[0][2]
         info["compression"]["r_half"] = compression[0][3]
-        info["compression"]["proportional_attention"] = compression[0][4]
-        info["compression"]["trace_source"] = compression[0][5]
+        info["compression"]["group_num"] = compression[0][4]
+
+        info["compression"]["proportional_attention"] = compression[0][5]
         info["compression"]["info_type"] = compression[0][6]
+        if info["compression"]["info_type"] in [0, 1]:
+            info["use_flash_attn"] = False
 
         info["compression"]["tau_sim"] = compression[1][0]
         info["compression"]["tau_info"] = compression[1][1]
@@ -93,7 +95,7 @@ def resetInfo(info, compression = None):
         info["compression"]["pooling_type"] = compression[1][3]
 
         info["compression"]["mass"] = compression[2][0]
-
+        #
 
 
     if info["compression"]["use"]:

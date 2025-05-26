@@ -9,7 +9,7 @@ import math
 import torch
 from typing import Callable, List, Tuple, Union
 
-# A. COMMON   : [use, r_prune, r_merge, r_protected, proportional_attention, trace_source]
+# A. COMMON   : [use, r_prune, r_merge, r_protected, proportional_attention]
 # B. MCTF     : [tau_sim, tau_info, tau_size, pooling_type]
 # C. VID-TLDR : [mass]
 # D. META     : size, attn, source
@@ -30,21 +30,24 @@ def token_compression(x, info, layer, others = None):
     r_merge = int(T2 * r_merge) if r_merge < 1 else r_merge
     r_merge = max(min(r_merge, T2 // 2, T2 - info["r_protected"]), 0)
 
-    if (not r_prune and not r_merge) and info["r_half"] != layer:
+    half = info["r_half"] == layer
+    if (not r_prune and not r_merge) and not half:
         return x.squeeze(0) if TD else x, others
 
     scores = info["importance"][None, :, None]
 
-    if info["source"] is None: info["source"] = torch.zeros((B, T1), dtype=torch.bool, device=x.device)
+    if info["source"] is None: info["source"] = torch.ones((B, (T1 // info["group_num"]) ), dtype=torch.bool, device=x.device)
     if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
-    if r_prune or info["r_half"] == layer:
+    if r_prune or half:
         x, info["source"], others = pruning(x,
                                             r_prune=r_prune,
-                                            r_half=info["r_half"],
+                                            half=half,
                                             scores=scores,
                                             source=info["source"],
+                                            group_num=info["group_num"],
                                             others = others)
+
 
     return x.squeeze(0) if TD else x, others
 
@@ -140,60 +143,39 @@ def merge_wavg(
 def pruning(
     x: torch.Tensor,
     r_prune            : int,
-    r_half             : int,
+    half               : bool,
     scores             : torch.Tensor,
     source             : torch.Tensor,
-    others             : []):
+
+    group_num          : int = 1,
+    others             : [] = None):
     b, t, d = x.shape
-    if r_half: # REMOVE HALF
-        scores_block = scores.reshape(-1, 4).mean(dim=-1)
-        mask_block = (scores_block >= scores_block.mean(dim=-1)).reshape(1, -1, 1, 1)
-        x_block = x.reshape(b, -1, 4, d)
-        x_unprune = x_block.masked_select(mask_block).view(b, -1, d)
 
-        if others is not None:
-            cu_lens, rotary_pos_emb = others
-            T_remain = mask.sum()
-            cu_lens[1] = T_remain
-            rotary_pos_emb = rotary_pos_emb.masked_select(mask).view(T_remain, -1)
-            others = [cu_lens, rotary_pos_emb]
+    if half: # REMOVE HALF
+        scores_block = scores.reshape(-1, group_num).mean(dim=-1)
+        mask_block = (scores_block >= scores_block.mean(dim=-1))
+        x_block = x.reshape(b, -1, group_num, d)
+        x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d) # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
 
-        # mean_scores = scores.mean(dim=1, keepdim=True)
-        # mask = (scores >= mean_scores)
-        # x_unprune = x.masked_select(mask).view(b, -1, d)  # (b, t', d)
-        # if source is not None:
-        #     source = source.masked_select(mask).view(b, -1, source.shape[-1])
-        #     # source = torch.gather(source, dim=1, index=idx_unprune.repeat(1, 1, source.shape[-1]))
-        # if others is not None:
-        #     cu_lens, rotary_pos_emb = others
-        #     T_remain = mask.sum()
-        #     cu_lens[1] = T_remain
-        #     rotary_pos_emb = rotary_pos_emb.masked_select(mask).view(T_remain, -1)
-        #     others = [cu_lens, rotary_pos_emb]
     else:
-        idx_unprune = scores.topk(t - r_prune, dim=1, largest=True, sorted=False).indices  # (b, t - r_prune)
-        x_unprune = torch.gather(x, dim=1, index=idx_unprune.expand(-1, -1, d))
-        if source is not None:
-            source = torch.gather(source, dim=1, index=idx_unprune.repeat(1, 1, source.shape[-1]))
+        scores_block = scores.reshape(1, -1, group_num).mean(dim=-1)
+        idx_unprune = scores_block.topk((t - r_prune) // group_num, dim=1, largest=True, sorted=False).indices  # (b, t - r_prune)
+
+        mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
+        mask_block.scatter_(1, idx_unprune, True)
+        x_block = x.reshape(b, -1, group_num, d)
+        x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d)  # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
+
+    if others is not None:
+        cu_lens, rotary_pos_emb = others
+
+        cu_lens[1] = x_unprune.shape[-2]
+        rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
+        others = [cu_lens, rotary_pos_emb]
+
+    if source is not None:
+        source = source * mask_block.reshape(1, -1)
 
     x = x_unprune
 
     return x, source, others
-
-
-
-def ANAsimilarity(x1, x2, info, dim=-1, idx = 1):
-    diff = torch.norm(x1 - x2, p=2, dim=dim).detach()
-    norm1 = torch.norm(x1, p=1, dim=dim).detach()
-    norm2 = torch.norm(x1, p=2, dim=dim).detach()
-    if info["analysis"]["use"]:
-        info["analysis"]["diff"][idx].append(diff.detach())
-        info["analysis"]["norm1"][idx].append(norm1.detach())
-        info["analysis"]["norm2"][idx].append(norm2.detach())
-
-    if info[f"compression"]["use"]:
-        info[f"compression"]["diff"] = diff.detach()
-        info[f"compression"]["norm1"] = norm1.detach()
-        info[f"compression"]["norm2"] = norm2.detach()
-
-
