@@ -9,46 +9,36 @@ import math
 import torch
 from typing import Callable, List, Tuple, Union
 
-# A. COMMON   : [use, r_prune, r_merge, r_protected, proportional_attention]
+# A. COMMON   : [use, prune_r, r_merge, r_half, group_num, info_type, border_remove]
 # B. MCTF     : [tau_sim, tau_info, tau_size, pooling_type]
 # C. VID-TLDR : [mass]
 # D. META     : size, attn, source
 
-def token_compression(x, info, layer, others = None):
+def token_compression(x, info, layer, others = []):
     if not info["use"]:
         return x, others
-
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
 
-    B, T1, D = x.shape
-    r_prune = info["r_prune"][layer] if type(info["r_prune"]) == list else info["r_prune"]
-    r_prune = int(T1 * r_prune) if r_prune < 1 else r_prune
-    r_prune = max(min(r_prune, T1, T1 - info["r_protected"]), 0)
-    T2 = T1 - r_prune
+    B, T, D = x.shape
+    r_use, thr_use = (info["prune_r_layer"] == layer), (info["prune_thr_layer"] == layer)
+    if T > 1 and (r_use or thr_use):
+        prune_r, prune_thr = None, None
+        if r_use: prune_r = int(T * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
+        if thr_use: prune_thr = info["prune_thr"]
 
-    r_merge = info["r_merge"][layer] if type(info["r_merge"]) == list else info["r_merge"]
-    r_merge = int(T2 * r_merge) if r_merge < 1 else r_merge
-    r_merge = max(min(r_merge, T2 // 2, T2 - info["r_protected"]), 0)
+        scores = info["importance"]
+        if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
+        if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
-    half = info["r_half"] == layer
-    if (not r_prune and not r_merge) and not half:
-        return x.squeeze(0) if TD else x, others
-
-    scores = info["importance"]
-
-    if info["source"] is None: info["source"] = torch.ones((B, (T1 // info["group_num"]) ), dtype=torch.bool, device=x.device)
-    if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
-
-    if r_prune or half:
         x, info["source"], others = pruning(x,
-                                            r_prune=r_prune,
-                                            half=half,
+                                            prune_r=prune_r,
+                                            prune_thr=prune_thr,
                                             scores=scores,
                                             source=info["source"],
                                             cls=info["cls"],
                                             group_num=info["group_num"],
+                                            SE = info["img_idx"],
                                             others = others)
-
 
     return x.squeeze(0) if TD else x, others
 
@@ -143,36 +133,58 @@ def merge_wavg(
 
 def pruning(
     x: torch.Tensor,
-    r_prune            : int,
-    half               : bool,
+    prune_r            : int,
+    prune_thr           : float,
     scores             : torch.Tensor,
     source             : torch.Tensor,
     cls                : False,
     group_num          : int = 1,
-    others             : [] = None):
-    b, t, d = x.shape
-
+    others             : [] = None,
+    SE                 : [] = None):
+    b, t_full, d = x.shape
     scores_block = scores.reshape(b, -1, group_num).mean(dim=-1) # (B, T)
+    scores_block = scores_block / scores_block.mean(dim=-1, keepdim=True)
+    t_vis = scores_block.shape[1]
+
     if cls: scores_block[:, 0] = math.inf
+
     x_block = x.reshape(b, -1, group_num, d)
-    if half: # REMOVE HALF
-        mask_block = (scores_block >= scores_block[:,1:].mean(dim=-1) if cls else scores_block.mean(dim=-1))
+    if prune_thr: # REMOVE HALF
+        mask_block = (scores_block >= prune_thr)
     else:
-        idx_unprune = scores_block.topk((t - r_prune) // group_num, dim=1, largest=True, sorted=False).indices  # (b, t - r_prune)
+        idx_unprune = scores_block.topk(int((t_vis - prune_r) // group_num), dim=1, largest=True, sorted=False).indices  # (b, t - prune_r)
         mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
         mask_block.scatter_(1, idx_unprune, True)
+
+
+    if SE[0] is not None:
+        start, end = SE
+        mask_F, mask_L = torch.ones((b, start), device=mask_block.device, dtype=torch.bool), torch.ones(b, t_full - end, device=mask_block.device, dtype=torch.bool)
+        mask_block = torch.cat([mask_F, mask_block, mask_L], dim =-1)
+
 
     x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d)  # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
 
     if others is not None:
-        cu_lens, rotary_pos_emb = others
-
-        cu_lens[1] = x_unprune.shape[-2]
-        rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
-        others = [cu_lens, rotary_pos_emb]
+        T_remain = x_unprune.shape[-2]
+        if len(others) == 2:
+            cu_lens, rotary_pos_emb = others
+            cu_lens[1] = T_remain
+            rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
+            others = [cu_lens, rotary_pos_emb]
+        else:
+            attention_mask, position_ids, cache_position, position_embeddings = others
+            attention_mask = attention_mask[:, :, :T_remain, :T_remain]
+            position_ids = position_ids.masked_select(mask_block.reshape(b, 1, -1)).reshape(3, 1, -1)
+            cache_position = cache_position.masked_select(mask_block)
+            position_embeddings = tuple([v.masked_select(mask_block.reshape(1, 1, -1, 1)).reshape(3, 1, -1, 128) for v in position_embeddings])
+            others = [attention_mask, position_ids, cache_position, position_embeddings]
 
     if source is not None:
-         source = source * mask_block.reshape(1, -1)
+        restored_mask = torch.zeros_like(source, device=source.device)
+        restored_mask[source] = mask_block
+        source = restored_mask
+
 
     x = x_unprune
 

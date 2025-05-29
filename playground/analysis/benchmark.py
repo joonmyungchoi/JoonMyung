@@ -34,7 +34,6 @@ def flops(model, size, round_num=1, eval=True, device="cuda", fp16=False, **kwar
 
     print(flop_count_table(flops))
     print(f"fvcore flops : {flops_num}")
-    JDataset
     return round(flops_num, round_num)
 
 def benchmark(

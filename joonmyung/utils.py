@@ -23,6 +23,9 @@ def to_tensor(vs):
         return torch.Tensor(vs) if type(vs) is not torch.Tensor else vs
 
 def str2list(s):
+    if s == 'None':
+        return None
+
     v = ast.literal_eval(s.replace(" ", ""))
     if type(v) is not list:
         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
@@ -43,6 +46,7 @@ def time2str(time, type = 0):
         return "{:4d}.{:2d}.{:2d} {:2d}:{:2d}:{:2d}".format(time.tm_year, time.tm_mon, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec)
     else:
         raise ValueError()
+
 
 def is_main_process():
     return get_rank() == 0

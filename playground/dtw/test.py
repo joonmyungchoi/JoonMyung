@@ -1,13 +1,13 @@
-import copy
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
 import torch
 import math
+import copy
 
 
 def draw(matrixes, vmin=None, vmax=None, col=1, p=False, title=[], fmt=1):
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    import pandas as pd
     row = (len(matrixes) - 1) // col + 1
     annot = True if fmt > 0 else False
     if p:

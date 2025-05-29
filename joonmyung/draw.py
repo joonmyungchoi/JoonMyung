@@ -21,13 +21,14 @@ import cv2
 import PIL
 import os
 
-def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, H = 14, W = 14, dtype=torch.float32, BL=False, cls=False):
+def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, HW = None, dtype=torch.float32, BL=False, cls=False):
     # values : (L, B, T)
     values = values.to(dtype)
-    if layers is not None:
-        values = values[layers]
-    if cls:
-        values = values[:, :, 1:]
+    if len(values.shape) == 2: values = values[None]
+
+    if layers is not None: values = values[layers]
+    if cls: values = values[:, :, 1:]
+
     if normalize:
         values = (values - values.min(dim=dim, keepdim=True)[0]) / (values.max(dim=dim, keepdim=True)[0] - values.min(dim=dim, keepdim=True)[0])
         values = values / values.sum(dim=dim, keepdim=True)
@@ -36,13 +37,15 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
     if sort: values = torch.argsort(values, dim=dim, descending = descending).argsort(dim=dim, descending=descending)
 
     if BL: values = values.transpose(0, 1)
-    return values.reshape(-1, H, W).to(dtype).detach() # LBF
+    if HW:
+        values = values.reshape(-1, HW[0], HW[1])
+    return  values # LBF
 
 def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
-                   show= True, deactivate=False,
-                   **kwargs):
+                   show= True, deactivate=False
+                   ):
     if deactivate:
         return
 
@@ -68,10 +71,11 @@ def generate_mask(data, topK=10, F = 1):
     flattened = data.view(data.shape[0], -1)
 
     if topK == -1:
-        mask = torch.stack([(f > f.mean()) for f in flattened]).to(dtype=dtype)
+        mask = torch.stack([(f > f[f!=0].mean()) for f in flattened]).to(dtype=dtype)
     else:
+        K = topK if type(topK) == int else int(flattened.shape[-1] * topK)
         sorted_indices = torch.argsort(flattened, dim=1)
-        top_K_indices = sorted_indices[:, :topK]
+        top_K_indices = sorted_indices[:, :K]
         mask = torch.ones_like(flattened, dtype=dtype)
         mask.scatter_(1, top_K_indices, 0)
     return mask.view(shape)
@@ -313,7 +317,7 @@ def data2PIL(datas, RGB = True):
 
     if type(datas) == torch.Tensor: # (C, H, W)
         if len(datas.shape) == 2: datas = datas[None]
-        datas = datas.detach().cpu().to(torch.float32)
+        datas = datas.detach().cpu()
         pils = datas.permute(1, 2, 0) if RGB else datas # (H, W, C)
     elif type(datas) == np.ndarray:
         datas = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB) if datas.max() <= 1 else datas
