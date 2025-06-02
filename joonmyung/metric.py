@@ -1,8 +1,9 @@
 from fvcore.nn import FlopCountAnalysis, flop_count_table
 from torchprofile import profile_macs
-from typing import Tuple
 from thop import profile
 from tqdm import tqdm
+import tracemalloc
+import statistics
 import torch
 import time
 
@@ -23,20 +24,6 @@ def numel(model,
     print(f"numel params : {params}")
     return round(params, round_num)
 
-@torch.no_grad()
-def flops(model, size, round_num=1, eval=True, fp16=False, p = False, device="cuda", **kwargs):
-    if eval: model.eval()
-    with torch.cuda.amp.autocast(enabled=fp16):
-        inputs = torch.randn(size, device=device, requires_grad=True)
-        with torch.no_grad():
-            flops = FlopCountAnalysis(model, (inputs, *kwargs))
-            flops_num = flops.total() / 1000000000
-    if p:
-        print(flop_count_table(flops))
-        print(f"fvcore flops : {flops_num}")
-
-    return round(flops_num, round_num)
-
 
 def get_macs(model, size,
              eval = True, round_num=1, device="cuda"):
@@ -47,73 +34,101 @@ def get_macs(model, size,
 
     return round(macs, round_num)
 
+
+def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_len = 28, device="cuda", dtype=torch.float32):
+    if case == "VISUAL":
+        hidden_states = torch.rand((token_enc, 1176), device=device, dtype=dtype)
+        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int64)
+        data = [hidden_states, grid_thw]
+    elif case == "CACHE":
+        attention_mask = torch.ones((1, token_dec), device=device, dtype=torch.bool)
+        position_ids = torch.arange(0, token_dec, device=device, dtype=torch.int64).repeat(3, 1)[:, None]
+        input_embeds = torch.rand((1, token_dec, 3584), device=device, dtype=dtype)
+        cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int64)
+        data = [None, attention_mask, position_ids, None, input_embeds, True, False, False, True, cache_position]
+    elif case == "GEN":
+        attention_mask = torch.ones((1, token_dec + 1), device=device, dtype=torch.bool)
+        position_ids = torch.ones(1, 1, device=device, dtype=torch.int64).repeat(3, 1)[:, None]
+        inputs_embeds = torch.rand((1, 1, 3584), device=device, dtype=dtype)
+        from transformers import DynamicCache
+        past_key_values = DynamicCache()
+        for layer_idx in range(layer_len):
+            key = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
+            value = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
+            past_key_values.update(key, value, layer_idx)
+        cache_position = torch.tensor([token_dec], device=device, dtype=torch.int64)
+        data = [None, attention_mask, position_ids, past_key_values, inputs_embeds, True, False, False, True, cache_position]
+    else:
+        pixel_values = torch.rand((batch_size, 3, 336, 336), device=device, dtype=dtype)
+        data = [pixel_values]
+
+    return data
+
+@torch.no_grad()
+def flops(model, batch_size = 1, case=None, round_num=1, eval=True, fp16=False, p=False, device="cuda"):
+    if eval: model.eval()
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=10032, token_dec = 2560, layer_len = 28, device=device)
+
+    with torch.cuda.amp.autocast(enabled=fp16):
+        with torch.no_grad():
+            flops = FlopCountAnalysis(model, inputs)
+            flops_num = flops.total() / 1000000000
+    if p:
+        print(flop_count_table(flops))
+        print(f"fvcore flops : {flops_num}")
+
+    return round(flops_num, round_num)
+
+@torch.no_grad()
 def benchmark(
     model: torch.nn.Module,
-    device: torch.device = 0,
-    input_size: Tuple[int] = (3, 224, 224),
-    batch_size: int = 1024,
+    batch_size:int = 1,
     runs: int = 40,
     throw_out: float = 0.25,
-    use_fp16: bool = False,
     verbose: bool = False,
-    **kwargs
+    case:str = None,
+    device  = "cuda",
+    dtype = torch.bfloat16,
 ) -> float:
-    """
-    Benchmark the given model with random inputs at the given batch size.
-
-    Args:
-     - model: the module to benchmark
-     - device: the device to use for benchmarking
-     - input_size: the input size to pass to the model (channels, h, w)
-     - batch_size: the batch size to use for evaluation
-     - runs: the number of total runs to do
-     - throw_out: the percentage of runs to throw out at the start of testing
-     - use_fp16: whether or not to benchmark with float16 and autocast
-     - verbose: whether or not to use tqdm to print progress / print throughput at end
-
-    Returns:
-     - the throughput measured in images / second
-    """
-
-    if not isinstance(device, torch.device):
-        device = torch.device(device)
-    is_cuda = torch.device(device).type == "cuda"
-
     model = model.eval().to(device)
-    input = torch.rand(batch_size, *input_size, device=device)
-    if use_fp16:
-        input = input.half()
-
     warm_up = int(runs * throw_out)
-    total = 0
-    start = time.time()
 
-    with torch.autocast(device.type, enabled=use_fp16):
-        with torch.no_grad():
-            for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):
-                if i == warm_up:
-                    if is_cuda:
-                        torch.cuda.synchronize()
-                    total = 0
-                    start = time.time()
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=10032, token_dec=2560, layer_len=28, device=device)
 
-                model(input, **kwargs)
-                total += batch_size
+    total, times, peak_memories = 0, [], []
+    for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):
+        if i == warm_up:
+            start, total, times, peak_memories = time.time(), 0, [], []
 
+        tracemalloc.start()
+        start_gpt = time.perf_counter()
+        with torch.cuda.amp.autocast(dtype=dtype):
+                model(*inputs)
+        end_gpt = time.perf_counter()
+        total += batch_size
 
-    if is_cuda:
-        torch.cuda.synchronize()
+        current, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        times.append(end_gpt - start_gpt)
+        peak_memories.append(peak / 1024)  # KB로 변환
+
+    avg_time = statistics.mean(times)
+    std_time = statistics.stdev(times)
+    avg_memory = statistics.mean(peak_memories)
+    std_memory = statistics.stdev(peak_memories)
 
     end = time.time()
     elapsed = end - start
-
     throughput = total / elapsed
-
     if verbose:
+        print(f"🔁 Benchmark over {int(runs * (1 - throw_out))} runs:")
+        print(f"⏱️ Time:   {avg_time:.6f} sec (± {std_time:.6f})")
+        print(f"📦 Memory: {avg_memory:.2f} KB (± {std_memory:.2f})")
         print(f"Throughput: {throughput:.2f} im/s")
+        print()
 
-    return round(throughput)
-
+    return throughput
 
 
 def accuracy(output, target, topk=(1,)):
