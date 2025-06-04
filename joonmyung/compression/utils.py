@@ -55,7 +55,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
 
     if info["analysis"]["use"]:
-        cls, source = info["analysis"]["cls"], info["compression"].get("source", None)
+        cls, source, group_num = info["analysis"]["cls"], info["compression"].get("source", None), info["compression"]["group_num"]
+        if group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
         [start, end] = info["analysis"].get("img_idx", [None, None])
 
         if attn is not None: # (B, H, T, T)

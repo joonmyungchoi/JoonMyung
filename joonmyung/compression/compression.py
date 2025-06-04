@@ -20,7 +20,7 @@ def token_compression(x, info, layer, others = []):
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
 
     B, T, D = x.shape
-    r_use, thr_use = (info["prune_r_layer"] == layer), (info["prune_thr_layer"] == layer)
+    r_use, thr_use = (info["prune_r_layer"] == layer and info["prune_r"]), (info["prune_thr_layer"] == layer and info["prune_thr"])
     if T > 1 and (r_use or thr_use):
         prune_r, prune_thr = None, None
         if r_use: prune_r = int(T * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]

@@ -38,17 +38,17 @@ def get_macs(model, size,
 def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_len = 28, device="cuda", dtype=torch.float32):
     if case == "VISUAL":
         hidden_states = torch.rand((token_enc, 1176), device=device, dtype=dtype)
-        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int64)
+        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32)
         data = [hidden_states, grid_thw]
     elif case == "CACHE":
         attention_mask = torch.ones((1, token_dec), device=device, dtype=torch.bool)
-        position_ids = torch.arange(0, token_dec, device=device, dtype=torch.int64).repeat(3, 1)[:, None]
+        position_ids = torch.arange(0, token_dec, device=device, dtype=torch.int32).repeat(3, 1)[:, None]
         input_embeds = torch.rand((1, token_dec, 3584), device=device, dtype=dtype)
-        cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int64)
+        cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int32)
         data = [None, attention_mask, position_ids, None, input_embeds, True, False, False, True, cache_position]
     elif case == "GEN":
         attention_mask = torch.ones((1, token_dec + 1), device=device, dtype=torch.bool)
-        position_ids = torch.ones(1, 1, device=device, dtype=torch.int64).repeat(3, 1)[:, None]
+        position_ids = torch.ones(1, 1, device=device, dtype=torch.int32).repeat(3, 1)[:, None]
         inputs_embeds = torch.rand((1, 1, 3584), device=device, dtype=dtype)
         from transformers import DynamicCache
         past_key_values = DynamicCache()
@@ -56,6 +56,8 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
             key = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
             value = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
             past_key_values.update(key, value, layer_idx)
+        # past_key_values =[[torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype), torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)] for _ in range(28)]
+
         cache_position = torch.tensor([token_dec], device=device, dtype=torch.int64)
         data = [None, attention_mask, position_ids, past_key_values, inputs_embeds, True, False, False, True, cache_position]
     else:
@@ -65,15 +67,15 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, case=None, round_num=1, eval=True, fp16=False, p=False, device="cuda"):
+def flops(model, batch_size = 1, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, device="cuda"):
     if eval: model.eval()
     inputs = dataGenerator(case, batch_size=batch_size, token_enc=10032, token_dec = 2560, layer_len = 28, device=device)
 
-    with torch.cuda.amp.autocast(enabled=fp16):
-        with torch.no_grad():
-            flops = FlopCountAnalysis(model, inputs)
-            flops_num = flops.total() / 1000000000
-    if p:
+    with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
+        flops = FlopCountAnalysis(model, (*inputs,))
+        flops_num = flops.total() / 1000000000
+
+    if verbose:
         print(flop_count_table(flops))
         print(f"fvcore flops : {flops_num}")
 
@@ -102,7 +104,7 @@ def benchmark(
 
         tracemalloc.start()
         start_gpt = time.perf_counter()
-        with torch.cuda.amp.autocast(dtype=dtype):
+        with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
                 model(*inputs)
         end_gpt = time.perf_counter()
         total += batch_size
