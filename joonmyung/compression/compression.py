@@ -152,9 +152,11 @@ def pruning(
     if prune_thr: # REMOVE HALF
         mask_block = (scores_block >= prune_thr)
     else:
-        idx_unprune = scores_block.topk(int((t_vis - prune_r) // group_num), dim=1, largest=True, sorted=False).indices  # (b, t - prune_r)
+        idx_unprune = scores_block.topk(t_vis - int(prune_r // group_num), dim=1, largest=True, sorted=False).indices  # (b, t - prune_r)
         mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
-        mask_block.scatter_(1, idx_unprune, True)
+        mask_block = mask_block.scatter(1, idx_unprune, torch.ones_like(idx_unprune, device=idx_unprune.device, dtype=torch.bool))
+        # mask_block = mask_block.scatter(1, idx_unprune, True)
+        # mask_block.scatter_(1, idx_unprune, True)
 
 
     if SE[0] is not None:

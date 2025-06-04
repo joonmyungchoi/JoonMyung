@@ -1,4 +1,5 @@
 from fvcore.nn import FlopCountAnalysis, flop_count_table
+from joonmyung.compression import resetInfo
 from torchprofile import profile_macs
 from thop import profile
 from tqdm import tqdm
@@ -67,9 +68,11 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, device="cuda"):
+def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, device="cuda"):
     if eval: model.eval()
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=10032, token_dec = 2560, layer_len = 28, device=device)
+
+    token_enc, token_dec = 10032, 2560 - int(2508 * drop_rate)
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, device=device)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
         flops = FlopCountAnalysis(model, (*inputs,))
@@ -85,6 +88,7 @@ def flops(model, batch_size = 1, case=None, round_num=1, eval=True, dtype=torch.
 def benchmark(
     model: torch.nn.Module,
     batch_size:int = 1,
+    drop_rate:float = 0.0,
     runs: int = 40,
     throw_out: float = 0.25,
     verbose: bool = False,
@@ -95,7 +99,8 @@ def benchmark(
     model = model.eval().to(device)
     warm_up = int(runs * throw_out)
 
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=10032, token_dec=2560, layer_len=28, device=device)
+    token_enc, token_dec = 10032, 2560 - int(2508 * drop_rate)
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec=token_dec, layer_len=28, device=device)
 
     total, times, peak_memories = 0, [], []
     for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):
@@ -105,7 +110,7 @@ def benchmark(
         tracemalloc.start()
         start_gpt = time.perf_counter()
         with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
-                model(*inputs)
+            model(*inputs)
         end_gpt = time.perf_counter()
         total += batch_size
 
