@@ -20,10 +20,31 @@ def getImpFastV(attn, start=None, end=None):
 def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
-def getVidTLDR(attn, start = None, end = None):
+def getImpVidTLDR(attn, start = None, end = None):
     attn_headavg = attn.mean(dim=1) # B T T
     importance = -(attn_headavg * torch.log(attn_headavg)).mean(dim=1)[start:end]
     return importance
+
+def getDivPrune(feat, r_keep):
+    feat_norm = feat / feat.norm(dim=-1, keepdim=True)
+    feat_sim = 1 - torch.mm(feat_norm, feat_norm.t())
+
+    s = torch.empty(r_keep, dtype=torch.long, device=feat.device)
+    for i in range(r_keep):
+        if i == 0:
+            m2 = feat_sim  # (576, 576)
+        else:
+            m2 = torch.index_select(feat_sim, 0, torch.index_select(s, 0, torch.arange(0, i, device=cosine_matrix.device)))  # (1, 576)
+
+        if i == 0:
+            scores = torch.topk(m2, 2, dim=0, largest=False).values[1, :]  # 576
+        else:
+            scores = torch.min(m2, dim=0).values  # 576
+
+        phrase_to_add_idx = torch.argmax(scores)  # 234
+        s[i] = phrase_to_add_idx
+    return s
+
 
 def unPrune(values, source):
     if source == None:
@@ -31,6 +52,7 @@ def unPrune(values, source):
     result = torch.zeros_like(source, device=source.device, dtype=values.dtype)
     result[source] = values
     return result
+
 
 
 def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
@@ -65,7 +87,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
             # PART II. VISUALIZATION
             info["analysis"]["base"].append(unPrune(getImpBase(attn, start, end, cls=cls), source))
-            info["analysis"]["vidTLDR"].append(unPrune(getVidTLDR(attn, start, end), source))
+            info["analysis"]["vidTLDR"].append(unPrune(getImpVidTLDR(attn, start, end), source))
             if start != None and end != None:
                 info["analysis"]["fastV"].append(getImpFastV(attn, start, end))
                 info["analysis"]["fitPrune"].append(getImpFitprune(attn, start, end))
@@ -81,7 +103,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         if attn is not None and info["compression"]["info_type"] == 0:    # attn : BASE
             importance = getImpBase(attn, start=start, end = end, cls=cls)
         elif attn is not None and info["compression"]["info_type"] == 1:  # attn : vid-TLDR
-            importance = getVidTLDR(attn, start=start, end = end)
+            importance = getImpVidTLDR(attn, start=start, end = end)
         elif attn is not None and info["compression"]["info_type"] == 2:  # attn : fastV
             importance = getImpFastV(attn, start = start, end = end)
         elif attn is not None and info["compression"]["info_type"] == 3:  # attn : fitPrune

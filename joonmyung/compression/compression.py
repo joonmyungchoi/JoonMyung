@@ -5,14 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 # --------------------------------------------------------
 
-import math
-import torch
-from typing import Callable, List, Tuple, Union
 
-# A. COMMON   : [use, prune_r, r_merge, r_half, group_num, info_type, border_remove]
-# B. MCTF     : [tau_sim, tau_info, tau_size, pooling_type]
-# C. VID-TLDR : [mass]
-# D. META     : size, attn, source
+from typing import Callable
+import torch
+import math
 
 def token_compression(x, info, layer, others = []):
     if not info["use"]:
@@ -20,6 +16,7 @@ def token_compression(x, info, layer, others = []):
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
 
     B, T, D = x.shape
+
     r_use, thr_use = (info["prune_r_layer"] == layer and info["prune_r"]), (info["prune_thr_layer"] == layer and info["prune_thr"])
     if T > 1 and (r_use or thr_use):
         prune_r, prune_thr = None, None
