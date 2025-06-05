@@ -41,39 +41,40 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
         values = values.reshape(-1, HW[0], HW[1])
     return  values # LBF
 
-def drawController(data, draw_type=0, data_type = 0, img = None, K = None,
+def drawController(data, draw_type=0, data_type = 0, img = None, K = None, drop_type = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
-                   show= True, deactivate=False
-                   ):
+                   show= True, deactivate=False,
+                   **kwargs):
     if deactivate:
         return
 
     if draw_type:
         drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
-                    save_name=save_name if save else None, show=show)
+                    save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None:
             if data_type == 1:
                 data = overlay(img, data)
             if data_type == 2:
-                mask = generate_mask(data, topK=K)
+                mask = generate_mask(data, topK=K, drop_type=drop_type)
                 data = mask_to_image(img, mask)
 
         drawImgPlot(data, col=col, border=border,
-                    save_name=save_name if save else None, show=show)
+                    save_name=save_name if save else None, show=show, **kwargs)
 
 
 
-def generate_mask(data, topK=10, F = 1):
+def generate_mask(data, topK=10, drop_type=0, F = 1):
     shape, dtype = data.shape, data.dtype # (L * B, T, T)
     data = data.reshape(-1, F, *shape[-2:]) # (L * B, T, T)
     flattened = data.view(data.shape[0], -1)
 
-    if topK == -1:
-        mask = torch.stack([(f > f[f!=0].mean()) for f in flattened]).to(dtype=dtype)
+    if drop_type:
+        flattened = flattened / flattened.mean(dim=-1, keepdim=True)
+        mask = flattened > topK
     else:
-        K = topK if type(topK) == int else int(flattened.shape[-1] * topK)
+        K = topK if type(topK) == int else int(flattened.shape[-1] * ( 1 - topK))
         sorted_indices = torch.argsort(flattened, dim=1)
         top_K_indices = sorted_indices[:, :K]
         mask = torch.ones_like(flattened, dtype=dtype)
@@ -148,7 +149,7 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
 
         if title:
             ax.set(title="{} : {}".format(title, e))
-    plt.tight_layout()
+    # plt.tight_layout()
     if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -196,7 +197,7 @@ def drawLinePlot(datas, index, col=1, title=[], xlabels=None, ylabels=None, mark
 
         ax.set(title=title[e])
     plt.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left')
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.show()
 
 def drawBarChart(df, x, y, splitColName, col=1, title=[], fmt=1, p=False, c=False, c_sites={}, showfliers=True, tqdm_disable=True):
@@ -357,7 +358,7 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
             ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
         if not vis_x: ax.xaxis.set_visible(False)
         if not vis_y: ax.yaxis.set_visible(False)
-    plt.tight_layout()
+    # plt.tight_layout()
 
     if output_dir and save_name:
         if not os.path.exists(output_dir):

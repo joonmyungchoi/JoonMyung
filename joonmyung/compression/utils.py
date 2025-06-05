@@ -1,4 +1,4 @@
-from collections import defaultdict
+import torch.nn.functional as F
 import torch
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
@@ -6,9 +6,8 @@ def getImpBase(attn, start=None, end=None, cls=False):
 
 def getImpFitprune(attn, start=None, end=None):
     attn_headmax = attn.max(dim=1).values
-
-    attn_self  = attn_headmax[:, start:end, start:end].sum(dim=1) / (end - start)
-    attn_cross = attn_headmax[:, end:, start:end].sum(dim=1)
+    attn_self = attn_headmax[:, start:end, start:end].mean(dim=1)
+    attn_cross = attn_headmax[:, end:, start:end].mean(dim=1)
     importance  = attn_self * attn_cross
     return importance
 
@@ -25,25 +24,25 @@ def getImpVidTLDR(attn, start = None, end = None):
     importance = -(attn_headavg * torch.log(attn_headavg)).mean(dim=1)[start:end]
     return importance
 
-def getDivPrune(feat, r_keep):
-    feat_norm = feat / feat.norm(dim=-1, keepdim=True)
-    feat_sim = 1 - torch.mm(feat_norm, feat_norm.t())
-
-    s = torch.empty(r_keep, dtype=torch.long, device=feat.device)
-    for i in range(r_keep):
-        if i == 0:
-            m2 = feat_sim  # (576, 576)
-        else:
-            m2 = torch.index_select(feat_sim, 0, torch.index_select(s, 0, torch.arange(0, i, device=cosine_matrix.device)))  # (1, 576)
-
-        if i == 0:
-            scores = torch.topk(m2, 2, dim=0, largest=False).values[1, :]  # 576
-        else:
-            scores = torch.min(m2, dim=0).values  # 576
-
-        phrase_to_add_idx = torch.argmax(scores)  # 234
-        s[i] = phrase_to_add_idx
-    return s
+# def getDivPrune(feat, r_keep):
+#     feat_norm = feat / feat.norm(dim=-1, keepdim=True)
+#     feat_sim = 1 - torch.mm(feat_norm, feat_norm.t())
+#
+#     s = torch.empty(r_keep, dtype=torch.long, device=feat.device)
+#     for i in range(r_keep):
+#         if i == 0:
+#             m2 = feat_sim  # (576, 576)
+#         else:
+#             m2 = torch.index_select(feat_sim, 0, torch.index_select(s, 0, torch.arange(0, i, device=cosine_matrix.device)))  # (1, 576)
+#
+#         if i == 0:
+#             scores = torch.topk(m2, 2, dim=0, largest=False).values[1, :]  # 576
+#         else:
+#             scores = torch.min(m2, dim=0).values  # 576
+#
+#         phrase_to_add_idx = torch.argmax(scores)  # 234
+#         s[i] = phrase_to_add_idx
+#     return s
 
 
 def unPrune(values, source):
@@ -77,24 +76,34 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
 
     if info["analysis"]["use"]:
-        cls, source, group_num = info["analysis"]["cls"], info["compression"].get("source", None), info["compression"]["group_num"]
+        info_ana = info["analysis"]
+        cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
         if group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
-        [start, end] = info["analysis"].get("img_idx", [None, None])
+        [start, end] = info_ana.get("img_idx", [None, None])
 
         if attn is not None: # (B, H, T, T)
             # PART I.  INFORMATION
-            info["analysis"]["vis_ratio"].append(getAttnFrom(attn, start=start, end=end, cls=cls, enc=enc))
+            info_ana["vis_ratio"].append(getAttnFrom(attn, start=start, end=end, cls=cls, enc=enc))
 
             # PART II. VISUALIZATION
-            info["analysis"]["base"].append(unPrune(getImpBase(attn, start, end, cls=cls), source))
-            info["analysis"]["vidTLDR"].append(unPrune(getImpVidTLDR(attn, start, end), source))
+            info_ana["base"].append(unPrune(getImpBase(attn, start, end, cls=cls), source))
+            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, start, end), source))
             if start != None and end != None:
-                info["analysis"]["fastV"].append(getImpFastV(attn, start, end))
-                info["analysis"]["fitPrune"].append(getImpFitprune(attn, start, end))
+                info_ana["fastV"].append(getImpFastV(attn, start, end))
+                info_ana["fitPrune"].append(getImpFitprune(attn, start, end))
 
         if feat is not None:
-            info["analysis"]["norm2"].append(unPrune(getL2Norm(feat, start, end), source))
-            # info["analysis"]["hidden_states"].append(feat.detach())
+            info_ana["norm2"].append(unPrune(getL2Norm(feat, start, end), source))
+            if info_ana.get("lm_head", None):
+                logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
+                log_probs = F.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                entropy = -(probs * log_probs).sum(dim=-1)
+                pred = logits.argmax(dim=-1).int()
+                info_ana["logit"].append(logits)
+                info_ana["entropy"].append(entropy)
+                info_ana["pred"].append(pred)
+
 
     if info["compression"]["use"]:
         cls, importance = info["compression"]["cls"], None
@@ -123,7 +132,11 @@ def resetInfo(info, compression = None):
         info["analysis"]["vidTLDR"]  = []
         info["analysis"]["fastV"]    = []
         info["analysis"]["fitPrune"] = []
+
         info["analysis"]["norm2"]    = []
+        info["analysis"]["pred"]    = []
+        info["analysis"]["logit"]    = []
+        info["analysis"]["entropy"]    = []
 
         info["analysis"]["img_idx"] = [None, None]
 
@@ -153,17 +166,17 @@ def resetInfo(info, compression = None):
         info["compression"]["source"] = None
         info["compression"]["img_idx"] = [None, None]
 
-
-
-def saveResult(result_sep, result_all):
-    em, f1 = result_all["overall"]["list_em"], result_all["overall"]["list_f1"]
-    mod_image, mod_table, mod_text = result_all["modalities"]["image"]["list_f1"], result_all["modalities"]["table"]["list_f1"], result_all["modalities"]["text"]["list_f1"]
-    hop_single, hop_multi = result_all["hop_types"]["Single-hop"]["list_f1"], result_all["hop_types"]["Multi-hop"]["list_f1"]
-    drop_ratio_enc = sum([v["drop_ratio_enc"].item() for v in result_sep.values()]) / len(result_sep)
-    drop_ratio_dec = sum([v["drop_ratio_dec"].item() for v in result_sep.values()]) / len(result_sep)
-
-    results = {"em" : em, "f1" : f1, "mod_image" : mod_image, "mod_table" : mod_table, "mod_text" : mod_text, "hop_single": hop_single, "hop_multi": hop_multi,
-               "drop_ratio_enc" : drop_ratio_enc, "drop_ratio_dec" : drop_ratio_dec}
+#
+#
+# def saveResult(result_sep, result_all):
+#     em, f1 = result_all["overall"]["list_em"], result_all["overall"]["list_f1"]
+#     mod_image, mod_table, mod_text = result_all["modalities"]["image"]["list_f1"], result_all["modalities"]["table"]["list_f1"], result_all["modalities"]["text"]["list_f1"]
+#     hop_single, hop_multi = result_all["hop_types"]["Single-hop"]["list_f1"], result_all["hop_types"]["Multi-hop"]["list_f1"]
+#     drop_ratio_enc = sum([v["drop_ratio_enc"].item() for v in result_sep.values()]) / len(result_sep)
+#     drop_ratio_dec = sum([v["drop_ratio_dec"].item() for v in result_sep.values()]) / len(result_sep)
+#
+#     results = {"em" : em, "f1" : f1, "mod_image" : mod_image, "mod_table" : mod_table, "mod_text" : mod_text, "hop_single": hop_single, "hop_multi": hop_multi,
+#                "drop_ratio_enc" : drop_ratio_enc, "drop_ratio_dec" : drop_ratio_dec}
 
 
 
