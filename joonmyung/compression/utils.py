@@ -79,21 +79,25 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         info_ana = info["analysis"]
         cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
         if group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
-        [start, end] = info_ana.get("img_idx", [None, None])
+        [i_start, i_end, i_len] = info_ana["img_idx"]
 
         if attn is not None: # (B, H, T, T)
             # PART I.  INFORMATION
-            info_ana["vis_ratio"].append(getAttnFrom(attn, start=start, end=end, cls=cls, enc=enc))
+            info_ana["vis_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
+            if i_start:
+                info_ana["attn_alloc"].append(torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)]))
+                a = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)]).to(torch.float32)
+                info_ana["attn_effi"].append(a / a.sum())
 
             # PART II. VISUALIZATION
-            info_ana["base"].append(unPrune(getImpBase(attn, start, end, cls=cls), source))
-            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, start, end), source))
-            if start != None and end != None:
-                info_ana["fastV"].append(getImpFastV(attn, start, end))
-                info_ana["fitPrune"].append(getImpFitprune(attn, start, end))
+            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source))
+            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source))
+            if i_start != None and i_end != None:
+                info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
+                info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
         if feat is not None:
-            info_ana["norm2"].append(unPrune(getL2Norm(feat, start, end), source))
+            info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
             if info_ana.get("lm_head", None):
                 logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
@@ -107,18 +111,18 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
     if info["compression"]["use"]:
         cls, importance = info["compression"]["cls"], None
-        [start, end] = info["compression"]["img_idx"]
+        [i_start, i_end] = info["compression"]["img_idx"]
 
         if attn is not None and info["compression"]["info_type"] == 0:    # attn : BASE
-            importance = getImpBase(attn, start=start, end = end, cls=cls)
+            importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
         elif attn is not None and info["compression"]["info_type"] == 1:  # attn : vid-TLDR
-            importance = getImpVidTLDR(attn, start=start, end = end)
+            importance = getImpVidTLDR(attn, start=i_start, end = i_end)
         elif attn is not None and info["compression"]["info_type"] == 2:  # attn : fastV
-            importance = getImpFastV(attn, start = start, end = end)
+            importance = getImpFastV(attn, start = i_start, end = i_end)
         elif attn is not None and info["compression"]["info_type"] == 3:  # attn : fitPrune
-            importance = getImpFitprune(attn, start = start, end = end)
+            importance = getImpFitprune(attn, start = i_start, end = i_end)
         elif feat is not None and info["compression"]["info_type"] == 4:  # feat : norm2
-            importance = getL2Norm(feat, start=start, end = end)
+            importance = getL2Norm(feat, start=i_start, end = i_end)
 
         if importance is not None: info["compression"]["importance"] = importance
 
@@ -126,6 +130,8 @@ def resetInfo(info, compression = None):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["vis_ratio"] = []
+        info["analysis"]["attn_alloc"] = []
+        info["analysis"]["attn_effi"] = []
 
         # PART II. VISUALIZATION
         info["analysis"]["base"]     = []
@@ -138,7 +144,7 @@ def resetInfo(info, compression = None):
         info["analysis"]["logit"]    = []
         info["analysis"]["entropy"]    = []
 
-        info["analysis"]["img_idx"] = [None, None]
+        info["analysis"]["img_idx"] = [None, None, None]
 
 
     if compression is not None:

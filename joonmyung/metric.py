@@ -71,7 +71,7 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
 def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, device="cuda"):
     if eval: model.eval()
 
-    token_enc, token_dec = 10032, 2560 - int(2508 * drop_rate)
+    token_enc, token_dec = 10032, 2581 - int(2508 * drop_rate)
     inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, device=device)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):

@@ -74,11 +74,11 @@ def generate_mask(data, topK=10, drop_type=0, F = 1):
         flattened = flattened / flattened.mean(dim=-1, keepdim=True)
         mask = flattened > topK
     else:
-        K = topK if type(topK) == int else int(flattened.shape[-1] * ( 1 - topK))
-        sorted_indices = torch.argsort(flattened, dim=1)
+        K = topK if type(topK) == int else int(flattened.shape[-1] * ( 1 - topK ))
+        sorted_indices = torch.argsort(flattened, dim=1, descending=True)
         top_K_indices = sorted_indices[:, :K]
-        mask = torch.ones_like(flattened, dtype=dtype)
-        mask.scatter_(1, top_K_indices, 0)
+        mask = torch.zeros_like(flattened, dtype=dtype)
+        mask.scatter_(1, top_K_indices, 1)
     return mask.view(shape)
 
 def mask_to_image(image, mask):
