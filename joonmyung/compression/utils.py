@@ -1,5 +1,6 @@
 import torch.nn.functional as F
 import torch
+
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
     return attn_base[:, start:end]
@@ -154,10 +155,7 @@ def resetInfo(info, compression = None):
         info["compression"]["prune_r"]         = compression[0][2]
         info["compression"]["prune_thr_layer"] = compression[0][3]
         info["compression"]["prune_thr"]       = compression[0][4]
-        info["compression"]["border_remove"]   = compression[0][5]
-        info["compression"]["group_num"]       = compression[0][6]
-
-
+        info["compression"]["group_num"]       = compression[0][5]
 
         info["use_flash_attn"] = False if info["compression"]["info_type"] in [0, 1, 2, 3] else True
 
@@ -167,23 +165,20 @@ def resetInfo(info, compression = None):
         info["compression"]["pooling_type"] = compression[1][3]
         info["compression"]["mass"] = compression[2][0]
 
+        info["compression"]["prePrune"] = compression[3][0]
+
+        if compression[3][0] == 1: info["compression"]["white"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
+
     if info["compression"]["use"]:
         info["compression"]["size"] = None
         info["compression"]["source"] = None
         info["compression"]["img_idx"] = [None, None]
 
-#
-#
-# def saveResult(result_sep, result_all):
-#     em, f1 = result_all["overall"]["list_em"], result_all["overall"]["list_f1"]
-#     mod_image, mod_table, mod_text = result_all["modalities"]["image"]["list_f1"], result_all["modalities"]["table"]["list_f1"], result_all["modalities"]["text"]["list_f1"]
-#     hop_single, hop_multi = result_all["hop_types"]["Single-hop"]["list_f1"], result_all["hop_types"]["Multi-hop"]["list_f1"]
-#     drop_ratio_enc = sum([v["drop_ratio_enc"].item() for v in result_sep.values()]) / len(result_sep)
-#     drop_ratio_dec = sum([v["drop_ratio_dec"].item() for v in result_sep.values()]) / len(result_sep)
-#
-#     results = {"em" : em, "f1" : f1, "mod_image" : mod_image, "mod_table" : mod_table, "mod_text" : mod_text, "hop_single": hop_single, "hop_multi": hop_multi,
-#                "drop_ratio_enc" : drop_ratio_enc, "drop_ratio_dec" : drop_ratio_dec}
 
+def grouping(x, group_num):
+    D = x.shape[-1]
+    return x.reshape(-1, group_num, D)
 
-
-
+def pruning(x, mask):
+    D = x.shape[-1] # T, D
+    return x.masked_select(mask.reshape(-1, 1, 1)).view(-1, D)
