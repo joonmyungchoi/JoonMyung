@@ -167,7 +167,9 @@ def pruning(
 
     if others is not None:
         T_remain = x_unprune.shape[-2]
-        if len(others) == 2:
+        if len(others) == 1:
+            print(1)
+        elif len(others) == 2:
             cu_lens, rotary_pos_emb = others
             cu_lens[1] = T_remain
             rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
