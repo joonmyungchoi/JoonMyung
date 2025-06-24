@@ -13,25 +13,14 @@ import math
 def token_compression(x, info, layer, others = []):
     if not info["use"]:
         return x, others
-    [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
-
-    B, T, D = x.shape
-    T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
 
     r_use, thr_use = (info["prune_r_layer"] == layer and info["prune_r"]), (info["prune_thr_layer"] == layer and info["prune_thr"])
-    if T > 1 and (r_use or thr_use):
-        prune_r, prune_thr = None, None
-        if r_use: prune_r = int(T_vis * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
-        if thr_use: prune_thr = info["prune_thr"]
-
-        scores = info["importance"]
-        if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
-        if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
-
+    if r_use or thr_use:
+        [x, BTD] = [x.reshape(-1, x.shape[-1]), True] if len(x.shape) == 3 else [x, False]
         x, info["source"], others = pruning(x,
-                                            prune_r=prune_r,
-                                            prune_thr=prune_thr,
-                                            scores=scores,
+                                            prune_r = info["prune_r"] if r_use else 0,
+                                            prune_thr=info["prune_thr"] if thr_use else 0,
+                                            scores=info["importance"],
                                             source=info["source"],
                                             cls=info["cls"],
                                             group_num=info["group_num"],
@@ -132,14 +121,18 @@ def merge_wavg(
 def pruning(
     x: torch.Tensor,
     prune_r            : int,
-    prune_thr           : float,
+    prune_thr          : float,
     scores             : torch.Tensor,
     source             : torch.Tensor,
     cls                : False,
     group_num          : int = 1,
     others             : [] = None,
     SE                 : [] = None):
-    b, t_full, d = x.shape
+
+    T_vis = info["t_vis"]
+    B = len(T_vis)
+
+    BT, d = x.shape
     scores_block = scores.reshape(b, -1, group_num).mean(dim=-1) # (B, T)
     scores_block = scores_block / scores_block.mean(dim=-1, keepdim=True)
     t_vis = scores_block.shape[1]

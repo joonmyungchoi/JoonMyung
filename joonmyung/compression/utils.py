@@ -127,6 +127,10 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
         if importance is not None: info["compression"]["importance"] = importance
 
+        # if info["source"] is None: info["source"] = torch.ones((B * (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
+        # if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
+
+
 def resetInfo(info, compression = None):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
@@ -163,11 +167,11 @@ def resetInfo(info, compression = None):
         info["compression"]["tau_info"] = compression[1][1]
         info["compression"]["tau_size"] = compression[1][2]
         info["compression"]["pooling_type"] = compression[1][3]
-        info["compression"]["mass"] = compression[2][0]
+        info["compression"]["mass"] = compression[1][4]
 
-        info["compression"]["prePrune"] = compression[3][0]
+        info["compression"]["prePrune"] = compression[2][0]
 
-        if compression[3][0] == 1: info["compression"]["white"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
+        if info["compression"]["prePrune"] == 1: info["compression"]["white"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None
