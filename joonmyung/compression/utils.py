@@ -114,15 +114,15 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         cls, importance = info["compression"]["cls"], None
         [i_start, i_end] = info["compression"]["img_idx"]
 
-        if attn is not None and info["compression"]["info_type"] == 0:    # attn : BASE
+        if attn is not None and info["compression"]["info_type"] == 1:    # attn : BASE
             importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
-        elif attn is not None and info["compression"]["info_type"] == 1:  # attn : vid-TLDR
+        elif attn is not None and info["compression"]["info_type"] == 2:  # attn : vid-TLDR
             importance = getImpVidTLDR(attn, start=i_start, end = i_end)
-        elif attn is not None and info["compression"]["info_type"] == 2:  # attn : fastV
+        elif attn is not None and info["compression"]["info_type"] == 3:  # attn : fastV
             importance = getImpFastV(attn, start = i_start, end = i_end)
-        elif attn is not None and info["compression"]["info_type"] == 3:  # attn : fitPrune
+        elif attn is not None and info["compression"]["info_type"] == 4:  # attn : fitPrune
             importance = getImpFitprune(attn, start = i_start, end = i_end)
-        elif feat is not None and info["compression"]["info_type"] == 4:  # feat : norm2
+        elif feat is not None and info["compression"]["info_type"] == 5:  # feat : norm2
             importance = getL2Norm(feat, start=i_start, end = i_end)
 
         if importance is not None: info["compression"]["importance"] = importance
@@ -154,24 +154,25 @@ def resetInfo(info, compression = None):
 
     if compression is not None:
         info["compression"]["use"] = True
-        info["compression"]["info_type"]       = compression[0][0]
-        info["compression"]["prune_r_layer"]   = compression[0][1]
-        info["compression"]["prune_r"]         = compression[0][2]
-        info["compression"]["prune_thr_layer"] = compression[0][3]
-        info["compression"]["prune_thr"]       = compression[0][4]
-        info["compression"]["group_num"]       = compression[0][5]
+        info["compression"]["info_type"]       = compression[0]
+        info["compression"]["prune_r_layer"]   = compression[1]
+        info["compression"]["prune_r"]         = compression[2]
+        info["compression"]["prune_thr_layer"] = compression[3]
+        info["compression"]["prune_thr"]       = compression[4]
+        info["compression"]["group_num"]       = compression[5] if compression[5] else 1
+        info["compression"]["prePrune"]        = compression[6]
 
-        info["use_flash_attn"] = False if info["compression"]["info_type"] in [0, 1, 2, 3] else True
+        info["use_flash_attn"] = False if info["compression"]["info_type"] in [1, 2, 3, 4] else True
 
-        info["compression"]["tau_sim"] = compression[1][0]
-        info["compression"]["tau_info"] = compression[1][1]
-        info["compression"]["tau_size"] = compression[1][2]
-        info["compression"]["pooling_type"] = compression[1][3]
-        info["compression"]["mass"] = compression[1][4]
+        info["compression"]["tau_sim"]      = 0
+        info["compression"]["tau_info"]     = 0
+        info["compression"]["tau_size"]     = 0
+        info["compression"]["pooling_type"] = 0
+        info["compression"]["mass"]         = 0
 
-        info["compression"]["prePrune"] = compression[2][0]
-
-        if info["compression"]["prePrune"] == 1: info["compression"]["white"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
+        if info["compression"]["prePrune"] == 1:
+            info["compression"]["white"]     = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
+            info["compression"]["white_emb"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_emb.pt")
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None
@@ -181,7 +182,7 @@ def resetInfo(info, compression = None):
 
 def grouping(x, group_num):
     D = x.shape[-1]
-    return x.reshape(-1, group_num, D)
+    return x.reshape(-1, group_num, D) if len(x.shape) == 2 else x.reshape(x.shape[0], -1, group_num, D)
 
 def pruning(x, mask):
     D = x.shape[-1] # T, D
