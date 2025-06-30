@@ -162,8 +162,6 @@ def resetInfo(info, compression = None):
         info["compression"]["group_num"]       = compression[5] if compression[5] else 1
         info["compression"]["prePrune"]        = compression[6]
 
-        info["use_flash_attn"] = False if info["compression"]["info_type"] in [1, 2, 3, 4] else True
-
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
         info["compression"]["tau_size"]     = 0
