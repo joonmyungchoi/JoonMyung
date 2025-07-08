@@ -108,6 +108,11 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["logit"].append(logits)
                 info_ana["entropy"].append(entropy)
                 info_ana["pred"].append(pred)
+            if i_start == None:
+                feat_32 = F.normalize(feat.to(torch.float32), dim=-1)
+                complexity = 1 - (feat_32 @ feat_32.transpose(-1, -2)).mean()
+                info_ana["complexity"].append(complexity)
+
 
 
     if info["compression"]["use"]:
@@ -150,6 +155,9 @@ def resetInfo(info, compression = None):
         info["analysis"]["entropy"]    = []
 
         info["analysis"]["img_idx"] = [None, None, None]
+
+        # PART III. DIFFICULTY
+        info["analysis"]["complexity"] = []
 
 
     if compression is not None:
