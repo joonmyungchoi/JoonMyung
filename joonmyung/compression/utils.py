@@ -20,9 +20,9 @@ def getImpFastV(attn, start=None, end=None):
 def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
-def getTokenRedundancy(feat, start=None, end=None):
+def getComplexity(feat, start=None, end=None):
     feat_norm = F.normalize(feat, dim=-1)[:, start:end]
-    return 1 - (feat_norm @ feat_norm.T).sum(dim=-1)
+    return 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean(dim=-1)
 
 def getImpVidTLDR(attn, start = None, end = None):
     attn_headavg = attn.mean(dim=1) # B T T
@@ -87,6 +87,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         [i_start, i_end, i_len] = info_ana["img_idx"]
 
         if attn is not None: # (B, H, T, T)
+            attn = attn.to(torch.float32)
             # PART I.  INFORMATION
             info_ana["vis_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
             if i_start:
@@ -102,6 +103,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
         if feat is not None:
+            feat = feat.to(torch.float32)
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
             if info_ana.get("lm_head", None):
                 logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
@@ -134,7 +136,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         elif feat is not None and info["compression"]["info_type"] == 5:  # feat : norm2
             importance = getL2Norm(feat, start=i_start, end = i_end)
         elif feat is not None and info["compression"]["info_type"] == 6:  # feat : redundancy
-            importance = getTokenRedundancy(feat, start=i_start, end = i_end)
+            importance = getComplexity(feat, start=i_start, end = i_end)
 
         if importance is not None: info["compression"]["importance"] = importance
 

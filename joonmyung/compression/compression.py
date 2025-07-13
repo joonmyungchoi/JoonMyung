@@ -169,13 +169,19 @@ def pruning(
         T_remain = x_unprune.shape[-2]
         if len(others) == 1:
             cu_lens = others[0]
-            cu_lens[1] = T_remain
+            if cu_lens is not None: cu_lens[1] = T_remain
             others = [cu_lens]
         elif len(others) == 2:
             cu_lens, rotary_pos_emb = others
             cu_lens[1] = T_remain
             rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
             others = [cu_lens, rotary_pos_emb]
+        elif len(others) == 3:
+            attention_mask, position_ids, cache_position = others
+            attention_mask = attention_mask[:, :, :T_remain, :T_remain] if attention_mask is not None else None
+            position_ids = position_ids.masked_select(mask_block.reshape(b, 1, -1)).reshape(3, 1, -1)
+            cache_position = cache_position.masked_select(mask_block)
+            others = [attention_mask, position_ids, cache_position]
         else:
             attention_mask, position_ids, cache_position, position_embeddings = others
             attention_mask = attention_mask[:, :, :T_remain, :T_remain] if attention_mask is not None else None
