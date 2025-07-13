@@ -178,7 +178,7 @@ def pruning(
             others = [cu_lens, rotary_pos_emb]
         else:
             attention_mask, position_ids, cache_position, position_embeddings = others
-            attention_mask = attention_mask[:, :, :T_remain, :T_remain]
+            attention_mask = attention_mask[:, :, :T_remain, :T_remain] if attention_mask is not None else None
             position_ids = position_ids.masked_select(mask_block.reshape(b, 1, -1)).reshape(3, 1, -1)
             cache_position = cache_position.masked_select(mask_block)
             position_embeddings = tuple([v.masked_select(mask_block.reshape(1, 1, -1, 1)).reshape(3, 1, -1, 128) for v in position_embeddings])

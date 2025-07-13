@@ -20,6 +20,10 @@ def getImpFastV(attn, start=None, end=None):
 def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
+def getTokenRedundancy(feat, start=None, end=None):
+    feat_norm = F.normalize(feat, dim=-1)[:, start:end]
+    return 1 - (feat_norm @ feat_norm.T).sum(dim=-1)
+
 def getImpVidTLDR(attn, start = None, end = None):
     attn_headavg = attn.mean(dim=1) # B T T
     importance = -(attn_headavg * torch.log(attn_headavg)).mean(dim=1)[start:end]
@@ -109,8 +113,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["entropy"].append(entropy)
                 info_ana["pred"].append(pred)
             if i_start == None:
-                feat_32 = F.normalize(feat.to(torch.float32), dim=-1)
-                complexity = 1 - (feat_32 @ feat_32.transpose(-1, -2)).mean()
+                feat_norm = F.normalize(feat.to(torch.float32), dim=-1)
+                complexity = 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean()
                 info_ana["complexity"].append(complexity)
 
 
@@ -129,6 +133,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
             importance = getImpFitprune(attn, start = i_start, end = i_end)
         elif feat is not None and info["compression"]["info_type"] == 5:  # feat : norm2
             importance = getL2Norm(feat, start=i_start, end = i_end)
+        elif feat is not None and info["compression"]["info_type"] == 6:  # feat : redundancy
+            importance = getTokenRedundancy(feat, start=i_start, end = i_end)
 
         if importance is not None: info["compression"]["importance"] = importance
 
