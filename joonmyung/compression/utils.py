@@ -1,5 +1,6 @@
 import torch.nn.functional as F
 import torch
+import os
 
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
@@ -103,7 +104,6 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
         if feat is not None:
-            feat = feat.to(torch.float32)
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
             if info_ana.get("lm_head", None):
                 logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
@@ -114,12 +114,10 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["logit"].append(logits)
                 info_ana["entropy"].append(entropy)
                 info_ana["pred"].append(pred)
-            if i_start == None:
-                feat_norm = F.normalize(feat.to(torch.float32), dim=-1)
-                complexity = 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean()
+            if i_start == None: # ENCODER
+                feat_norm = F.normalize(feat.to(torch.float32), dim=-1) # ↑ : 단순
+                complexity = 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean() # ↑ : 복잡
                 info_ana["complexity"].append(complexity)
-
-
 
     if info["compression"]["use"]:
         cls, importance = info["compression"]["cls"], None
@@ -144,12 +142,12 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         # if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
 
-def resetInfo(info, compression = None):
+def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
-        info["analysis"]["vis_ratio"] = []
+        info["analysis"]["vis_ratio"]  = []
         info["analysis"]["attn_alloc"] = []
-        info["analysis"]["attn_effi"] = []
+        info["analysis"]["attn_effi"]  = []
 
         # PART II. VISUALIZATION
         info["analysis"]["base"]     = []
@@ -158,15 +156,15 @@ def resetInfo(info, compression = None):
         info["analysis"]["fitPrune"] = []
 
         info["analysis"]["norm2"]    = []
-        info["analysis"]["pred"]    = []
+        info["analysis"]["pred"]     = []
         info["analysis"]["logit"]    = []
-        info["analysis"]["entropy"]    = []
+        info["analysis"]["entropy"]  = []
 
+        info["analysis"]["white_mask"] = None
         info["analysis"]["img_idx"] = [None, None, None]
 
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
-
 
     if compression is not None:
         info["compression"]["use"] = True
@@ -184,15 +182,18 @@ def resetInfo(info, compression = None):
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
 
-        if info["compression"]["prePrune"] == 1:
-            info["compression"]["white"]     = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white.pt")
-            info["compression"]["white_emb"] = torch.load("/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_emb.pt")
-
     if info["compression"]["use"]:
         info["compression"]["size"] = None
         info["compression"]["source"] = None
         info["compression"]["img_idx"] = [None, None]
 
+    if ret is not None:
+        dtype_str = "1" if dtype == torch.float32 else "0"
+        if ret:
+            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_ret{dtype_str}.pt", weights_only=True)
+        else:
+            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_qa{dtype_str}.pt", weights_only=True)
+        info["temp"]["white"] = white
 
 def grouping(x, group_num):
     D = x.shape[-1]

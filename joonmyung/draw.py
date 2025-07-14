@@ -54,9 +54,9 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None, drop_
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None:
-            if data_type == 1:
+            if data_type == 1: # 이미지와 겹치기
                 data = overlay(img, data)
-            if data_type == 2:
+            if data_type == 2: # 해당 부분 삭제
                 mask = generate_mask(data, topK=K, drop_type=drop_type)
                 data = mask_to_image(img, mask)
 
