@@ -41,7 +41,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
         values = values.reshape(-1, HW[0], HW[1])
     return  values # LBF
 
-def drawController(data, draw_type=0, data_type = 0, img = None, K = None, drop_type = None,
+def drawController(data, vis_heatmap=0, vis_overlay = 0, img = None, K = None, use_threshold = None, mask = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
                    show= True, deactivate=False,
@@ -49,28 +49,30 @@ def drawController(data, draw_type=0, data_type = 0, img = None, K = None, drop_
     if deactivate:
         return
 
-    if draw_type:
+    if vis_heatmap:
         drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None:
-            if data_type == 1: # 이미지와 겹치기
-                data = overlay(img, data)
-            if data_type == 2: # 해당 부분 삭제
-                mask = generate_mask(data, topK=K, drop_type=drop_type)
-                data = mask_to_image(img, mask)
+            if vis_overlay: # 이미지와 겹치기
+                if K or mask is not None:
+                    if mask is None: mask = generate_mask(data, topK=K, use_threshold=use_threshold) # (6, 32, 32)
+                    data = mask_to_image(img, mask)
+                else:
+                    data = overlay(img, data)
+
 
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
 
 
 
-def generate_mask(data, topK=10, drop_type=0, F = 1):
+def generate_mask(data, topK=10, use_threshold = False, F = 1):
     shape, dtype = data.shape, data.dtype # (L * B, T, T)
     data = data.reshape(-1, F, *shape[-2:]) # (L * B, T, T)
     flattened = data.view(data.shape[0], -1)
 
-    if drop_type:
+    if use_threshold:
         flattened = flattened / flattened.mean(dim=-1, keepdim=True)
         mask = flattened > topK
     else:
