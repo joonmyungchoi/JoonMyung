@@ -36,7 +36,7 @@ def get_macs(model, size,
     return round(macs, round_num)
 
 
-def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_len = 28, device="cuda", dtype=torch.float32):
+def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_len = 28, shape = None, device="cuda", dtype=torch.float32):
     if case == "VISUAL":
         hidden_states = torch.rand((token_enc, 1176), device=device, dtype=dtype)
         grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32)
@@ -57,22 +57,22 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
             key = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
             value = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
             past_key_values.update(key, value, layer_idx)
-        # past_key_values =[[torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype), torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)] for _ in range(28)]
 
         cache_position = torch.tensor([token_dec], device=device, dtype=torch.int64)
         data = [None, attention_mask, position_ids, past_key_values, inputs_embeds, True, False, False, True, cache_position]
     else:
-        pixel_values = torch.rand((batch_size, 3, 336, 336), device=device, dtype=dtype)
+        pixel_values = torch.rand(shape, device=device, dtype=dtype) \
+                if shape != None else torch.rand((batch_size, 3, 336, 336), device=device, dtype=dtype)
         data = [pixel_values]
 
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, device="cuda"):
+def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
     if eval: model.eval()
 
     token_enc, token_dec = 10032, 2581 - int(2508 * drop_rate)
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, device=device)
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, shape=shape, device=device)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
         flops = FlopCountAnalysis(model, (*inputs,))
@@ -93,6 +93,7 @@ def benchmark(
     throw_out: float = 0.25,
     verbose: bool = False,
     case:str = None,
+    shape=None,
     device  = "cuda",
     dtype = torch.bfloat16,
 ) -> float:
@@ -100,7 +101,7 @@ def benchmark(
     warm_up = int(runs * throw_out)
 
     token_enc, token_dec = 10032, 2560 - int(2508 * drop_rate)
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec=token_dec, layer_len=28, device=device)
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device)
 
     total, times, peak_memories = 0, [], []
     for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):

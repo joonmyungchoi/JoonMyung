@@ -41,7 +41,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
         values = values.reshape(-1, HW[0], HW[1])
     return  values # LBF
 
-def drawController(data, vis_heatmap=0, vis_overlay = 0, img = None, K = None, use_threshold = None, mask = None,
+def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K = None, use_threshold = None, mask = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
                    show= True, deactivate=False,
