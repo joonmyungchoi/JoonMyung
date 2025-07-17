@@ -2,6 +2,9 @@ import torch.nn.functional as F
 import torch
 import os
 
+from joonmyung.compression.compression import needAttn
+
+
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
     return attn_base[:, start:end]
@@ -181,6 +184,7 @@ def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
         info["compression"]["tau_size"]     = 0
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
+        info["compression"]["need_attn"] = [needAttn(info, l) for l in range(50)]
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None

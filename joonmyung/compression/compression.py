@@ -10,7 +10,7 @@ from typing import Callable
 import torch
 import math
 
-def token_compression(x, info, layer, others = []):
+def token_compression(x, info, layer_idx, others = []):
     if not info["use"]:
         return x, others
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
@@ -18,7 +18,7 @@ def token_compression(x, info, layer, others = []):
     B, T, D = x.shape
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
 
-    r_use, thr_use = (info["prune_r_layer"] == layer and info["prune_r"]), (info["prune_thr_layer"] == layer and info["prune_thr"])
+    r_use, thr_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"])
     if T > 1 and (r_use or thr_use):
         prune_r, prune_thr = None, None
         if r_use: prune_r = int(T_vis * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
@@ -199,3 +199,12 @@ def pruning(
     x = x_unprune
 
     return x, source, others
+
+
+def needAttn(info, layer_idx):
+    if info["compression"]["use"]:
+        if info["compression"]["info_type"] in [1, 2, 3, 4]:
+            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx) or \
+                    (info["compression"]["prune_thr"] and info["compression"]["prune_thr_layer"] == layer_idx):
+                return True
+    return False
