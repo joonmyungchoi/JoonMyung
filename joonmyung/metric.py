@@ -48,11 +48,13 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
         cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int32)
         data = [None, attention_mask, position_ids, None, input_embeds, True, False, False, True, cache_position]
     elif case == "GEN":
+        # TODO: 계속 self.attn에서 누적되는거 수정필요
         attention_mask = torch.ones((1, token_dec + 1), device=device, dtype=torch.bool)
         position_ids = torch.ones(1, 1, device=device, dtype=torch.int32).repeat(3, 1)[:, None]
         inputs_embeds = torch.rand((1, 1, 3584), device=device, dtype=dtype)
         from transformers import DynamicCache
         past_key_values = DynamicCache()
+
         for layer_idx in range(layer_len):
             key = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
             value = torch.rand((1, 4, token_dec, 128), device=device, dtype=dtype)
