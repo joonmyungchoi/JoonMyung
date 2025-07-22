@@ -182,6 +182,8 @@ def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
         info["compression"]["prune_thr"]       = compression[4]
         info["compression"]["group_num"]       = compression[5] if compression[5] else 1
         info["compression"]["prePrune"]        = compression[6]
+        info["compression"]["propAttn"]        = compression[7]
+
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
@@ -207,6 +209,11 @@ def grouping(x, group_num):
     D = x.shape[-1]
     return x.reshape(-1, group_num, D) if len(x.shape) == 2 else x.reshape(x.shape[0], -1, group_num, D)
 
-def pruning(x, mask):
+def pruning(x, mask, prop=False):
     D = x.shape[-1] # T, D
-    return x.masked_select(mask.reshape(-1, 1, 1)).view(-1, D)
+
+    remain = x.masked_select(mask.reshape(-1, 1, 1)).view(-1, D)
+    if prop:
+        remain = torch.cat([remain, x.masked_select(~mask.reshape(-1, 1, 1)).view(-1, D).mean(dim=0, keepdim=True)], dim=0)
+
+    return remain
