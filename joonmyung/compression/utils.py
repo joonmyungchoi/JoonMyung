@@ -66,10 +66,11 @@ def unPrune(values, source):
 def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
     attn_headavg = attn.mean(dim=1)
     if not enc and attn.shape[2] != 1:
+        vis2textPre_ratio = attn_headavg[:, :start, start:end].mean(dim=-2).sum(dim=-1)
         vis2vis_ratio  = attn_headavg[:, start:end, start:end].mean(dim=-2).sum(dim=-1)
-        vis2text_ratio = attn_headavg[:, end:, start:end].mean(dim=-2).sum(dim=-1)
+        vis2textPost_ratio = attn_headavg[:, end:-1, start:end].mean(dim=-2).sum(dim=-1)
         vis2last_ratio = attn_headavg[:, -1, start:end].sum(dim=-1)
-        result = torch.cat([vis2vis_ratio, vis2text_ratio, vis2last_ratio], dim=0)
+        result = torch.cat([vis2textPre_ratio, vis2vis_ratio, vis2textPost_ratio, vis2last_ratio], dim=0)
     elif cls:
         patch2cls_ratio   = attn_headavg[:, 1:, 1:].mean(dim=-2).sum(dim=-1)
         patch2patch_ratio = attn_headavg[:,  0, 1:].sum(dim=-1)
@@ -93,11 +94,14 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         if attn is not None: # (B, H, T, T)
             attn = attn.to(torch.float32)
             # PART I.  INFORMATION
-            info_ana["vis_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
+            info_ana["vis_attn_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
             if i_start:
-                info_ana["attn_alloc"].append(torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)]))
-                a = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)]).to(torch.float32)
-                info_ana["attn_effi"].append(a / a.sum())
+                # [TXT_PRE, VIS, TXT_POST, EOS]
+                attn_temp = attn.mean(dim=(0,1)) # (2551, 2551)
+                attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)])
+                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)]).to(torch.float32)
+                info_ana["eos_attn_alloc"].append(attn_alloc_full)
+                info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
             # PART II. VISUALIZATION
             info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source))
@@ -109,7 +113,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         if feat is not None:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
             if info_ana.get("lm_head", None):
-                logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
+                logits = info_ana["lm_head"](info_ana["norm"](feat[-1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
                 entropy = -(probs * log_probs).sum(dim=-1)
@@ -148,9 +152,9 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
-        info["analysis"]["vis_ratio"]  = []
-        info["analysis"]["attn_alloc"] = []
-        info["analysis"]["attn_effi"]  = []
+        info["analysis"]["vis_attn_ratio"]  = []
+        info["analysis"]["eos_attn_alloc"] = []
+        info["analysis"]["eos_attn_effi"]  = []
 
         # PART II. VISUALIZATION
         info["analysis"]["base"]     = []
@@ -164,7 +168,7 @@ def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
         info["analysis"]["entropy"]  = []
 
         info["analysis"]["white_mask"] = None
-        info["analysis"]["img_idx"] = [None, None, None]
+        info["analysis"]["img_idx"]    = [None, None, None]
 
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
@@ -194,9 +198,9 @@ def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
     if ret is not None:
         dtype_str = "1" if dtype == torch.float32 else "0"
         if ret:
-            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_ret{dtype_str}.pt", weights_only=True)
+            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_ret_pix.pt", weights_only=True)
         else:
-            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_qa{dtype_str}.pt", weights_only=True)
+            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_qa_pix.pt", weights_only=True)
         info["temp"]["white"] = white
 
 def grouping(x, group_num):
