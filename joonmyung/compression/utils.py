@@ -149,7 +149,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         # if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
 
-def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
+def resetInfo(info, compression = None, ret=None):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["vis_attn_ratio"]  = []
@@ -198,7 +198,6 @@ def resetInfo(info, compression = None, ret=None, dtype=torch.float32):
         info["compression"]["img_idx"] = [None, None]
 
     if ret is not None:
-        dtype_str = "1" if dtype == torch.float32 else "0"
         if ret:
             white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_ret_pix.pt", weights_only=True)
         else:
