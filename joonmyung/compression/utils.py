@@ -2,7 +2,7 @@ import torch.nn.functional as F
 import torch
 import os
 
-from joonmyung.compression.compression import needAttn
+from joonmyung.compression.compression import needAttn, needNaive
 
 
 def getImpBase(attn, start=None, end=None, cls=False):
@@ -89,15 +89,13 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         info_ana = info["analysis"]
         cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
         if group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
-        [i_start, i_end, i_len] = info_ana["img_idx"]
+        i_start, i_end, i_len = info_ana["img_idx"]
 
         if attn is not None: # (B, H, T, T)
             attn = attn.to(torch.float32)
             # PART I.  INFORMATION
             info_ana["vis_attn_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
-            if i_start:
-                # [TXT_PRE, VIS, TXT_POST, EOS]
-                attn_temp = attn.mean(dim=(0,1)) # (2551, 2551)
+            if i_start: # [TXT_PRE, VIS, TXT_POST, EOS]
                 attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)])
                 attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)]).to(torch.float32)
                 info_ana["eos_attn_alloc"].append(attn_alloc_full)
@@ -127,8 +125,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["complexity"].append(complexity)
 
     if info["compression"]["use"]:
-        cls, importance = info["compression"]["cls"], None
-        [i_start, i_end] = info["compression"]["img_idx"]
+        cls, importance  = info["compression"]["cls"], None
+        i_start, i_end = info["compression"]["img_idx"]
 
         if attn is not None and info["compression"]["info_type"] == 1:    # attn : BASE
             importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
@@ -180,17 +178,17 @@ def resetInfo(info, compression = None, ret=None):
         info["compression"]["prune_r"]         = compression[2]
         info["compression"]["prune_thr_layer"] = compression[3]
         info["compression"]["prune_thr"]       = compression[4]
-        info["compression"]["group_num"]       = compression[5] if compression[5] else 1
-        info["compression"]["prePrune"]        = compression[6]
-        info["compression"]["propAttn"]        = compression[7]
+        info["compression"]["prePrune"]        = compression[5]
+        info["compression"]["propAttn"]        = compression[6]
 
+        info["compression"]["need_naive"] = [False] * 50
+        info["compression"]["need_attn"]  = [needAttn(info, l) for l in range(50)]
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
         info["compression"]["tau_size"]     = 0
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
-        info["compression"]["need_attn"] = [needAttn(info, l) for l in range(50)]
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None

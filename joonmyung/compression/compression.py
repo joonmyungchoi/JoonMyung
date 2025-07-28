@@ -200,6 +200,13 @@ def pruning(
 
     return x, source, others
 
+def needNaive(info, layer_idx):
+    if info["compression"]["use"]:
+        if info["compression"]["info_type"] in [1, 2, 3, 4]:
+            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx) or \
+                    (info["compression"]["prune_thr"] and info["compression"]["prune_thr_layer"] == layer_idx):
+                return True
+    return False
 
 def needAttn(info, layer_idx):
     if info["compression"]["use"]:
