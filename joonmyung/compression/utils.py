@@ -1,10 +1,7 @@
 import torch.nn.functional as F
 import torch
-import os
-
 from joonmyung.compression.compression import needAttn, needNaive
-
-
+import math
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
     return attn_base[:, start:end]
@@ -83,10 +80,12 @@ def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
 def getAnalysis(info, attn = None, feat = None, enc= False):
     if attn is not None and len(attn.shape) == 3: attn = attn[None]
     if feat is not None and len(feat.shape) == 2: feat = feat[None]
+    info_temp = info["temp"]
+    info_ana  = info["analysis"]
+    info_comp = info["compression"]
 
+    if info_ana["use"]:
 
-    if info["analysis"]["use"]:
-        info_ana = info["analysis"]
         cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
         if source is not None and group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
         i_start, i_end, i_len = info_ana["img_idx"]
@@ -110,8 +109,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
         if feat is not None and feat.shape[1] != 1:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
-            if info_ana.get("lm_head", None):
-                logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
+            if info_temp.get("lm_head", None):
+                logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
                 entropy = -(probs * log_probs).sum(dim=-1)
@@ -124,30 +123,41 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 complexity = 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean() # ↑ : 복잡
                 info_ana["complexity"].append(complexity)
 
-    if info["compression"]["use"]:
-        cls, importance  = info["compression"]["cls"], None
-        i_start, i_end = info["compression"]["img_idx"]
+    if info_comp["use"]:
+        cls, importance  = info_comp["cls"], None
+        i_start, i_end = info_comp["img_idx"]
 
-        if attn is not None and info["compression"]["info_type"] == 1:    # attn : BASE
+        if attn is not None and info_comp["info_type"] == 1:    # attn : BASE
             importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
-        elif attn is not None and info["compression"]["info_type"] == 2:  # attn : vid-TLDR
+        elif attn is not None and info_comp["info_type"] == 2:  # attn : vid-TLDR
             importance = getImpVidTLDR(attn, start=i_start, end = i_end)
-        elif attn is not None and info["compression"]["info_type"] == 3:  # attn : fastV
+        elif attn is not None and info_comp["info_type"] == 3:  # attn : fastV
             importance = getImpFastV(attn, start = i_start, end = i_end)
-        elif attn is not None and info["compression"]["info_type"] == 4:  # attn : fitPrune
+        elif attn is not None and info_comp["info_type"] == 4:  # attn : fitPrune
             importance = getImpFitprune(attn, start = i_start, end = i_end)
-        elif feat is not None and info["compression"]["info_type"] == 5:  # feat : norm2
+        elif feat is not None and info_comp["info_type"] == 5:  # feat : norm2
             importance = getL2Norm(feat, start=i_start, end = i_end)
-        elif feat is not None and info["compression"]["info_type"] == 6:  # feat : redundancy
+        elif feat is not None and info_comp["info_type"] == 6:  # feat : redundancy
             importance = getComplexity(feat, start=i_start, end = i_end)
 
-        if importance is not None: info["compression"]["importance"] = importance
+        if importance is not None:
+            info_comp["importance"] = importance
+
+        if feat is not None and info_temp.get("lm_head", None):
+            if not info["efficiency"]:
+                logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+                log_probs = F.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                entropy = -(probs * log_probs).sum(dim=-1)
+                info_comp["entropy"] = entropy
+            else:
+                info_comp["entropy"] = math.inf
 
         # if info["source"] is None: info["source"] = torch.ones((B * (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
         # if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
 
-def resetInfo(info, compression = None, ret=None):
+def resetInfo(info, compression = None, ret=None, need_attn=False):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["vis_attn_ratio"]  = []
@@ -180,9 +190,10 @@ def resetInfo(info, compression = None, ret=None):
         info["compression"]["prune_thr"]       = compression[4]
         info["compression"]["prePrune"]        = compression[5]
         info["compression"]["propAttn"]        = compression[6]
+        info["compression"]["prune_entro"]     = compression[7]
 
-        info["compression"]["need_naive"] = [False] * 50
-        info["compression"]["need_attn"]  = [needAttn(info, l) for l in range(50)]
+        info["compression"]["need_naive"] = [needAttn(info, l) if not need_attn else False for l in range(50)]
+        info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn else False for l in range(50)]
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0

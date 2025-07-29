@@ -74,7 +74,7 @@ def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=Tru
     if eval: model.eval()
 
     token_enc, token_dec = 10032, 2581 - int(2508 * drop_rate)
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, shape=shape, device=device)
+    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, shape=shape, device=device, dtype = dtype)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
         flops = FlopCountAnalysis(model, (*inputs,))
