@@ -88,10 +88,10 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
     if info["analysis"]["use"]:
         info_ana = info["analysis"]
         cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
-        if group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
+        if source is not None and group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
         i_start, i_end, i_len = info_ana["img_idx"]
 
-        if attn is not None: # (B, H, T, T)
+        if attn is not None and attn.shape[2] != 1: # (B, H, T, T)
             attn = attn.to(torch.float32)
             # PART I.  INFORMATION
             info_ana["vis_attn_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
@@ -108,10 +108,10 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
-        if feat is not None:
+        if feat is not None and feat.shape[1] != 1:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
             if info_ana.get("lm_head", None):
-                logits = info_ana["lm_head"](info_ana["norm"](feat[-1].detach()))
+                logits = info_ana["lm_head"](info_ana["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
                 entropy = -(probs * log_probs).sum(dim=-1)
