@@ -2,6 +2,12 @@ import torch.nn.functional as F
 import torch
 from joonmyung.compression.compression import needAttn, needNaive
 import math
+
+def getVisualToken(x, start = None, end = None):
+    if x == None:
+        return None
+    return x[:, start:end]
+
 def getImpBase(attn, start=None, end=None, cls=False):
     attn_base = attn[:, :, 0].mean(dim=1) if cls else attn.mean(dim=(1,2))
     return attn_base[:, start:end]
@@ -85,10 +91,11 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
     info_comp = info["compression"]
 
     if info_ana["use"]:
-
+        i_start, i_end, i_len = info_comp["img_idx"]
         cls, source, group_num = info_ana["cls"], info["compression"].get("source", None), info["compression"].get("group_num", 1)
-        if source is not None and group_num > 1: source = source.unsqueeze(-1).expand(-1, -1, group_num).reshape(source.shape[0], -1)
-        i_start, i_end, i_len = info_ana["img_idx"]
+        source_vis = getVisualToken(source)
+        if source_vis is not None and group_num > 1:
+            source_vis = source_vis.unsqueeze(-1).expand(-1, -1, group_num).reshape(source_vis.shape[0], -1)
 
         if attn is not None and attn.shape[2] != 1: # (B, H, T, T)
             attn = attn.to(torch.float32)
@@ -101,14 +108,14 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
             # PART II. VISUALIZATION
-            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source))
-            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source))
+            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
+            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
             if i_start != None and i_end != None:
                 info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
         if feat is not None and feat.shape[1] != 1:
-            info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source))
+            info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
             if info_temp.get("lm_head", None):
                 logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
@@ -124,8 +131,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["complexity"].append(complexity)
 
     if info_comp["use"]:
+        i_start, i_end, i_len = info_comp["img_idx"]
         cls, importance  = info_comp["cls"], None
-        i_start, i_end = info_comp["img_idx"]
 
         if attn is not None and info_comp["info_type"] == 1:    # attn : BASE
             importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
@@ -153,10 +160,6 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
             else:
                 info_comp["entropy"] = math.inf
 
-        # if info["source"] is None: info["source"] = torch.ones((B * (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
-        # if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
-
-
 def resetInfo(info, compression = None, ret=None, need_attn=False):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
@@ -176,11 +179,12 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["analysis"]["entropy"]  = []
 
         info["analysis"]["white_mask"] = None
-        info["analysis"]["img_idx"]    = [None, None, None]
+
 
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
 
+    info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
         info["compression"]["use"] = True
         info["compression"]["info_type"]       = compression[0]
@@ -204,7 +208,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
     if info["compression"]["use"]:
         info["compression"]["size"] = None
         info["compression"]["source"] = None
-        info["compression"]["img_idx"] = [None, None]
+
 
     if ret is not None:
         if ret:
@@ -212,6 +216,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         else:
             white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_qa_pix.pt", weights_only=True)
         info["temp"]["white"] = white
+
 
 def grouping(x, group_num):
     D = x.shape[-1]
