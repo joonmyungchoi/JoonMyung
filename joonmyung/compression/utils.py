@@ -212,9 +212,9 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
 
     if ret is not None:
         if ret:
-            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_ret_pix.pt", weights_only=True)
+            white = torch.load(f"./temp/white_ret_pix.pt", weights_only=True)
         else:
-            white = torch.load(f"/hub_data1/joonmyung/conference/2026AAAI/m3docrag/temp/white_qa_pix.pt", weights_only=True)
+            white = torch.load(f"./temp/white_qa_pix.pt", weights_only=True)
         info["temp"]["white"] = white
 
 
