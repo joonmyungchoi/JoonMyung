@@ -28,7 +28,7 @@ def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
 def getComplexity(feat, start=None, end=None):
-    feat_norm = F.normalize(feat, dim=-1)[:, start:end]
+    feat_norm = F.normalize(feat.to(torch.float32), dim=-1)[:, start:end]
     return 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean(dim=-1)
 
 def getImpVidTLDR(attn, start = None, end = None):
@@ -127,7 +127,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["pred"].append(pred)
             if i_start == None: # ENCODER
                 feat_norm = F.normalize(feat.to(torch.float32), dim=-1) # ↑ : 단순
-                complexity = 1 - (feat_norm @ feat_norm.transpose(-1, -2)).mean() # ↑ : 복잡
+                complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1) # ↑ : 복잡
                 info_ana["complexity"].append(complexity)
 
     if info_comp["use"]:
@@ -178,7 +178,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["analysis"]["logit"]    = []
         info["analysis"]["entropy"]  = []
 
-        info["analysis"]["white_mask"] = None
+        info["analysis"]["white_mask"] = []
 
 
         # PART III. DIFFICULTY
@@ -193,8 +193,9 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["prune_thr_layer"] = compression[3]
         info["compression"]["prune_thr"]       = compression[4]
         info["compression"]["prePrune"]        = compression[5]
-        info["compression"]["propAttn"]        = compression[6]
-        info["compression"]["prune_entro"]     = compression[7]
+        info["compression"]["prePrune_layer"]  = compression[6]
+        info["compression"]["propAttn"]        = compression[7]
+        info["compression"]["prune_entro"]     = compression[8]
 
         info["compression"]["need_naive"] = [needAttn(info, l) if not need_attn else False for l in range(50)]
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn else False for l in range(50)]

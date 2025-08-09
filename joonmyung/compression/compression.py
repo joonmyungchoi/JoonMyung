@@ -147,10 +147,10 @@ def pruning(
     if cls: scores_block[:, 0] = math.inf
 
     x_block = x.reshape(b, -1, group_num, d)
-    if prune_thr: # REMOVE HALF
+    if prune_thr: # REMOVE BASED THRESHOLD
         mask_block = (scores_block >= prune_thr)
     else:
-        idx_unprune = scores_block.topk(t_vis - int(prune_r // group_num), dim=1, largest=True, sorted=False).indices  # (b, t - prune_r)
+        idx_unprune = scores_block.topk(t_vis - int(prune_r // group_num), dim=1, largest=True, sorted=False).indices
         mask_block = torch.zeros_like(scores_block, dtype=torch.bool)
         mask_block = mask_block.scatter(1, idx_unprune, torch.ones_like(idx_unprune, device=idx_unprune.device, dtype=torch.bool))
 
