@@ -197,14 +197,16 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["propAttn"]        = compression[7]
         info["compression"]["prune_entro"]     = compression[8]
 
-        info["compression"]["need_naive"] = [needAttn(info, l) if not need_attn else False for l in range(50)]
-        info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn else False for l in range(50)]
+        info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
+        info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
         info["compression"]["tau_size"]     = 0
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
+
+        info["compression"]["prune_entro"] = [16, 0.6, 0.6, 0.6, 0.6]
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None
