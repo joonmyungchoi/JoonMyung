@@ -108,14 +108,14 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
             # PART II. VISUALIZATION
-            # info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
-            # info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
+            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
+            info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
             if i_start != None and i_end != None:
                 info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
         if feat is not None and feat.shape[1] != 1:
-            # info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
+            info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
             if info_temp.get("lm_head", None):
                 logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
@@ -127,9 +127,8 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
                 info_ana["pred"].append(pred)
             if i_start == None: # ENCODER
                 feat_norm = F.normalize(feat.to(torch.float32), dim=-1) # ↑ : 단순
-                # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1) # ↑ : 복잡
-                # info_ana["complexity"].append(complexity)
-                complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
+                complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1) # ↑ : 복잡
+                # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
                 info_ana["complexity"].append(complexity)
 
     if info_comp["use"]:
@@ -198,7 +197,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["prePrune_layer"]  = compression[6]
         info["compression"]["propAttn"]        = compression[7]
         info["compression"]["prune_entro"]     = compression[8]
-        #
+
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
 

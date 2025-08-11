@@ -53,7 +53,7 @@ for task, dataset, run, config, pretrained_path, flop_range in args.settings:
                 r = list(map(add, r, r_add))
 
                 log_stats = {"r_merge": r, "mctf": args.compression[1], "vid_TLDR": args.compression[2], "task": task, "dataset" : dataset}
-                if resultManager(file_name=f"{args.result_name}.pkl", folder_path = result_path, new_result=log_stats, checkColumns=list(log_stats.keys()), duplicate_check=True):
+                if resultManager(file_name=f"{args.version}.pkl", folder_path = result_path, new_result=log_stats, checkColumns=list(log_stats.keys()), duplicate_check=True):
                     r_merges.append(r)
                     ex += 1
                 else:
@@ -70,7 +70,7 @@ for task, dataset, run, config, pretrained_path, flop_range in args.settings:
         process = f"python {run} {config} pretrained_path {pretrained_path} output_dir {result_path} batch_size_test {args.batch_size} use_bf16 False \
                 model.vision_encoder.use_flash_attn False model.vision_encoder.use_fused_rmsnorm False model.vision_encoder.use_fused_mlp False \
                 model.vision_encoder.compression {compression_str} r_merges {r_merges_str} \
-                result_name {args.result_name} analysis True server {server} task {task} dataset {dataset} flop_range {flop_range}"
+                version {args.version} analysis True server {server} task {task} dataset {dataset} flop_range {flop_range}"
         processes.append(process)
         count += 1
 # torch.distributed.launch --nproc_per_node=1
