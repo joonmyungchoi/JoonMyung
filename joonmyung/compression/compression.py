@@ -212,3 +212,59 @@ def needAttn(info, layer_idx):
                     (info["compression"]["prune_thr"] and info["compression"]["prune_thr_layer"] == layer_idx):
                 return True
     return False
+
+
+class EntDropScheduler:
+    def __init__(self, drop_rate, start_layer):
+        self.drop_rate = torch.as_tensor(drop_rate, dtype=torch.float32)
+        self.K = len(drop_rate)
+        self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
+        self.start_layer = start_layer
+
+    def reset(self):
+        self.bin_used = torch.zeros(self.K, dtype=torch.bool)
+
+    @torch.no_grad()
+    def compute_drop(self, T, entropy, layer) -> int:
+        if layer < self.start_layer:
+            return 0
+
+        if not hasattr(self, "bin_used"): self.reset()
+        T = int(T)
+
+        bid = torch.bucketize(torch.tensor(10.0 - float(entropy)), self.bins[1:-1], right=False).item()  # 0..K-1
+        pending = ~self.bin_used[:bid+1]
+        if pending.any():
+            keep_factor = (1.0 - self.drop_rate[:bid+1][pending]).prod().item()
+            self.bin_used[:bid+1] = True
+        else:
+            keep_factor = 1.0
+
+        keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
+        return T - keep
+
+# drop_scheduler = DropScheduler([0.5, 0.4, 0.3, 0.2, 0.1], start_layer=15)
+#
+# T = 1000
+# prune_T1 = drop_scheduler.compute_drop(T, 9.0, 15)
+# T1 = T - prune_T1
+# print(f"1. {T}, {prune_T1}, {T1}")
+# prune_T2 = drop_scheduler.compute_drop(T1, 9.0, 16)
+# T2 = T1 - prune_T2
+# print(f"2. {T1}, {prune_T2}, {T2}")
+# prune_T3 = drop_scheduler.compute_drop(T2, 7.0, 17)
+# T3 = T2 - prune_T3
+# print(f"3. {T2}, {prune_T3}, {T3}")
+# prune_T4 = drop_scheduler.compute_drop(T3, 7.0, 18)
+# T4 = T3 - prune_T4
+# print(f"4. {T3}, {prune_T4}, {T4}")
+# prune_T5 = drop_scheduler.compute_drop(T4, 3.0, 18)
+# T5 = T4 - prune_T5
+# print(f"5. {T4}, {prune_T5}, {T5}")
+# prune_T6 = drop_scheduler.compute_drop(T5, 3.0, 18)
+# T6 = T5 - prune_T6
+# print(f"6. {T5}, {prune_T6}, {T6}")
+# prune_T7 = drop_scheduler.compute_drop(T6, 1.0, 19)
+# T7 = T6 - prune_T7
+# print(f"7. {T6}, {prune_T7}, {T7}")
+# print(1)
