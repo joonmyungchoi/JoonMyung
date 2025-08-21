@@ -1,7 +1,9 @@
 import torch.nn.functional as F
 import torch
-from joonmyung.compression.compression import needAttn, needNaive
+from joonmyung.compression.compression import needAttn, needNaive, EntroDropScheduler
 import math
+
+
 
 def getVisualToken(x, start = None, end = None):
     if x == None:
@@ -181,9 +183,9 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
 
         info["analysis"]["white_mask"] = []
 
-
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
+
 
     info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
@@ -191,18 +193,22 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["info_type"]       = compression[0]
         info["compression"]["prune_r_layer"]   = compression[1]
         info["compression"]["prune_r"]         = compression[2]
+
         info["compression"]["prune_thr_layer"] = compression[3]
         info["compression"]["prune_thr"]       = compression[4]
-        info["compression"]["prePrune"]        = compression[5]
-        info["compression"]["prePrune_layer"]  = compression[6]
-        info["compression"]["propAttn"]        = compression[7]
-        info["compression"]["prune_entro"]     = compression[8]
+
+        info["compression"]["prePrune_layer"]  = compression[5]
+        info["compression"]["prePrune_thr"]    = compression[6]
+
+        info["compression"]["entroPrune_layer"]       = compression[7]
+        info["compression"]["entroPrune_drop_ratio"]  = compression[8]
+        info["compression"]["propAttn"]               = compression[9]
+
+        if compression[7] and compression[8]:
+            info["compression"]["entroPrune"] = EntroDropScheduler(compression[7], compression[8])
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
-
-
-
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
@@ -210,12 +216,12 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
 
-
-
     if info["compression"]["use"]:
         info["compression"]["size"] = None
         info["compression"]["source"] = None
-
+        info["compression"]["entropy"] = None
+        if info["compression"]["entroPrune"] is not None:
+            info["compression"]["entroPrune"].reset()
 
     if ret is not None:
         if ret:

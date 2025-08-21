@@ -11,19 +11,20 @@ import torch
 import math
 
 def token_compression(x, info, layer_idx, others = []):
-    if not info["use"]:
-        return x, others
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
-
     B, T, D = x.shape
-    T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
+    if not info["use"] or T == 1:
+        return x.squeeze(0) if TD else x, others
 
+    T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
     r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
-                              (info["prune_thr_layer"] == layer_idx and info["prune_thr"])
-    if T > 1 and (r_use or thr_use):
+                              (info["entroPrune"](T_vis, info["entropy"], layer_idx) if info["entroPrune"] is not None else 0)
+
+    if (r_use or thr_use or ent_use):
         prune_r, prune_thr = None, None
         if r_use: prune_r = int(T_vis * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
         if thr_use: prune_thr = info["prune_thr"]
+        if ent_use: prune_r = ent_use
 
         scores = info["importance"]
         if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
@@ -157,8 +158,11 @@ def pruning(
 
     if SE[0] is not None:
         start, end, length = SE
+
         mask_F, mask_L = torch.ones((b, start), device=mask_block.device, dtype=torch.bool), torch.ones(b, t_full - end, device=mask_block.device, dtype=torch.bool)
         mask_block = torch.cat([mask_F, mask_block, mask_L], dim =-1)
+        t_num = mask_block.sum().item()
+        SE[1], SE[2] = t_num - (t_full - end), t_num
 
     x_unprune = x_block.masked_select(mask_block.reshape(1, -1, 1, 1)).view(b, -1, d)  # (1, 10032(T), 1280) > (1, 4880(T'), 1280)
 
@@ -214,19 +218,22 @@ def needAttn(info, layer_idx):
     return False
 
 
-class EntDropScheduler:
-    def __init__(self, drop_rate, start_layer):
+class EntroDropScheduler:
+    def __init__(self, start_layer, drop_rate):
         self.drop_rate = torch.as_tensor(drop_rate, dtype=torch.float32)
         self.K = len(drop_rate)
         self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
         self.start_layer = start_layer
-
+        self.tokens = []
     def reset(self):
         self.bin_used = torch.zeros(self.K, dtype=torch.bool)
+        self.tokens = []
 
     @torch.no_grad()
-    def compute_drop(self, T, entropy, layer) -> int:
-        if layer < self.start_layer:
+    def __call__(self, T, entropy, layer):
+
+        if layer < self.start_layer or entropy == None:
+            self.tokens.append(T)
             return 0
 
         if not hasattr(self, "bin_used"): self.reset()
@@ -241,30 +248,5 @@ class EntDropScheduler:
             keep_factor = 1.0
 
         keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
+        self.tokens.append(keep)
         return T - keep
-
-# drop_scheduler = DropScheduler([0.5, 0.4, 0.3, 0.2, 0.1], start_layer=15)
-#
-# T = 1000
-# prune_T1 = drop_scheduler.compute_drop(T, 9.0, 15)
-# T1 = T - prune_T1
-# print(f"1. {T}, {prune_T1}, {T1}")
-# prune_T2 = drop_scheduler.compute_drop(T1, 9.0, 16)
-# T2 = T1 - prune_T2
-# print(f"2. {T1}, {prune_T2}, {T2}")
-# prune_T3 = drop_scheduler.compute_drop(T2, 7.0, 17)
-# T3 = T2 - prune_T3
-# print(f"3. {T2}, {prune_T3}, {T3}")
-# prune_T4 = drop_scheduler.compute_drop(T3, 7.0, 18)
-# T4 = T3 - prune_T4
-# print(f"4. {T3}, {prune_T4}, {T4}")
-# prune_T5 = drop_scheduler.compute_drop(T4, 3.0, 18)
-# T5 = T4 - prune_T5
-# print(f"5. {T4}, {prune_T5}, {T5}")
-# prune_T6 = drop_scheduler.compute_drop(T5, 3.0, 18)
-# T6 = T5 - prune_T6
-# print(f"6. {T5}, {prune_T6}, {T6}")
-# prune_T7 = drop_scheduler.compute_drop(T6, 1.0, 19)
-# T7 = T6 - prune_T7
-# print(f"7. {T6}, {prune_T7}, {T7}")
-# print(1)

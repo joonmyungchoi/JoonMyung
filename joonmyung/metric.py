@@ -70,7 +70,7 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
+def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, max_depth = 1, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
     if eval: model.eval()
 
     token_enc, token_dec = 10032, 2581 - int(2508 * drop_rate)
@@ -81,7 +81,7 @@ def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=Tru
         flops_num = flops.total() / 1000000000
 
     if verbose:
-        print(flop_count_table(flops))
+        print(flop_count_table(flops, max_depth=max_depth))
         print(f"fvcore flops : {flops_num}")
 
     return round(flops_num, round_num)
