@@ -19,6 +19,7 @@ def token_compression(x, info, layer_idx, others = []):
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
     r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
                               (info["entroPrune"](T_vis, info["entropy"], layer_idx) if info["entroPrune"] is not None else 0)
+    if info["prune_r"]: r_throughput = info["prune_r"][layer_idx]
 
     if (r_use or thr_use or ent_use):
         prune_r, prune_thr = None, None

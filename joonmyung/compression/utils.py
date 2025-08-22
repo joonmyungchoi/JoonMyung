@@ -186,7 +186,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
 
-
+    info["compression"]["Ts"] = []
     info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
         info["compression"]["use"] = True
