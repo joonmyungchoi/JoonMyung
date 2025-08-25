@@ -36,10 +36,10 @@ def get_macs(model, size,
     return round(macs, round_num)
 
 
-def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_len = 28, shape = None, device="cuda", dtype=torch.float32):
+def dataGenerator(case, batch_size=1, n_page=1, token_enc=10032, token_dec = 2560, layer_len = 28, shape = None, device="cuda", dtype=torch.float32):
     if case == "VISUAL":
         hidden_states = torch.rand((token_enc, 1176), device=device, dtype=dtype)
-        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32)
+        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32).expand(n_page, -1)
         data = [hidden_states, grid_thw]
     elif case == "CACHE":
         attention_mask = torch.ones((1, token_dec), device=device, dtype=torch.bool)
@@ -70,10 +70,10 @@ def dataGenerator(case, batch_size=1, token_enc=10032, token_dec = 2560, layer_l
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=True, max_depth = 1, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
+def flops(model, batch_size = 1, n_page = 1, drop_rate=0.0, case=None, round_num=1, eval=True, max_depth = 1, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
     if eval: model.eval()
 
-    token_enc, token_dec = 10032, 2581 - int(2508 * drop_rate)
+    token_enc, token_dec = n_page * 10032, int(n_page * 2508 * (1 - drop_rate)) + 73
     inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, shape=shape, device=device, dtype = dtype)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):
@@ -90,6 +90,7 @@ def flops(model, batch_size = 1, drop_rate=0.0, case=None, round_num=1, eval=Tru
 def benchmark(
     model: torch.nn.Module,
     batch_size:int = 1,
+    n_page:int = 1,
     drop_rate:float = 0.0,
     runs: int = 40,
     throw_out: float = 0.25,
@@ -102,8 +103,8 @@ def benchmark(
     model = model.eval().to(device)
     warm_up = int(runs * throw_out)
 
-    token_enc, token_dec = 10032, 2560 - int(2508 * drop_rate)
-    inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device)
+    token_enc, token_dec = n_page * 10032, int((n_page * 2508 + (n_page - 1) * 2) * (1 - drop_rate)) + 73
+    inputs = dataGenerator(case, batch_size=batch_size, n_page=n_page, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device)
 
     total, times, peak_memories = 0, [], []
     for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):

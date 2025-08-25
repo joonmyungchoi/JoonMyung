@@ -1,6 +1,7 @@
+from joonmyung.compression.compression import needAttn, needNaive
 import torch.nn.functional as F
+import numpy as np
 import torch
-from joonmyung.compression.compression import needAttn, needNaive, EntroDropScheduler
 import math
 
 
@@ -135,7 +136,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
 
     if info_comp["use"]:
         i_start, i_end, i_len = info_comp["img_idx"]
-        cls, importance  = info_comp["cls"], None
+        cls, importance = info_comp["cls"], None
 
         if attn is not None and info_comp["info_type"] == 1:    # attn : BASE
             importance = getImpBase(attn, start=i_start, end = i_end, cls=cls)
@@ -149,21 +150,21 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
             importance = getL2Norm(feat, start=i_start, end = i_end)
         elif feat is not None and info_comp["info_type"] == 6:  # feat : redundancy
             importance = getComplexity(feat, start=i_start, end = i_end)
+        # else:
+        #     importance =
 
         if importance is not None:
             info_comp["importance"] = importance
 
-        if feat is not None and info_temp.get("lm_head", None):
-            if not info["efficiency"]:
-                logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
-                log_probs = F.log_softmax(logits, dim=-1)
-                probs = log_probs.exp()
-                entropy = -(probs * log_probs).sum(dim=-1)
-                info_comp["entropy"] = entropy
-            else:
-                info_comp["entropy"] = math.inf
+        if feat is not None and info["efficiency"].entroPrune:
+            logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+            log_probs = F.log_softmax(logits, dim=-1)
+            probs = log_probs.exp()
+            entropy = -(probs * log_probs).sum(dim=-1)
+            info_comp["entropy"] = entropy
 
 def resetInfo(info, compression = None, ret=None, need_attn=False):
+    info["efficiency"].reset()
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["vis_attn_ratio"]  = []
@@ -186,7 +187,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
 
-    info["compression"]["Ts"] = []
+
     info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
         info["compression"]["use"] = True
@@ -204,11 +205,9 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["entroPrune_drop_ratio"]  = compression[8]
         info["compression"]["propAttn"]               = compression[9]
 
-        if compression[7] and compression[8]:
-            info["compression"]["entroPrune"] = EntroDropScheduler(compression[7], compression[8])
-
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
+        info["efficiency"].register_entroPruning(compression[7], compression[8])
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
@@ -220,8 +219,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["size"] = None
         info["compression"]["source"] = None
         info["compression"]["entropy"] = None
-        if info["compression"]["entroPrune"] is not None:
-            info["compression"]["entroPrune"].reset()
+
 
     if ret is not None:
         if ret:
@@ -243,3 +241,80 @@ def pruning(x, mask, prop=False):
         remain = torch.cat([remain, x.masked_select(~mask.reshape(-1, 1, 1)).view(-1, D).mean(dim=0, keepdim=True)], dim=0)
 
     return remain
+
+
+
+class EntroDropScheduler:
+    def __init__(self, enc):
+        self.drop_ratio = None
+        self.benchmark = False
+        self.Ts = []
+        self.Ts_full = []
+        self.entroPrune = False
+        self.enc = enc
+
+    def benchmark_mode(self):
+        self.reset()
+        self.benchmark = True
+        Ts = np.array(self.Ts_full).mean(axis=0, dtype=int)
+        self.drop_ratio = Ts[:-1] - Ts[1:]
+        if not self.enc:
+            self.drop_ratio = np.concatenate((np.array([0]), self.drop_ratio), axis=0)
+
+    def register_entroPruning(self, start_layer, drop_rate):
+        if type(drop_rate) == list:
+            self.drop_rate = torch.as_tensor(drop_rate, dtype=torch.float32)
+            self.K = len(drop_rate)
+            self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
+            self.start_layer = start_layer
+            self.entroPrune = True
+
+    def reset(self):
+        if self.entroPrune:
+            self.bin_used = torch.zeros(self.K, dtype=torch.bool)
+        if len(self.Ts):
+            self.Ts_full.append(self.Ts)
+        self.Ts = []
+
+    def calculate_flops(self):
+        flops =  self.calculate_flops_enc() if self.enc else self.calculate_flops_dec()
+        return flops / 1e+9
+
+    def add_token(self, T):
+        self.Ts.append(T)
+    def calculate_flops_enc(self):
+        D_in, D, D_out = 1176, 1280, 3584
+        flops = 0
+        for idx, T in enumerate(self.Ts):
+            if idx == 0: # PATCH_EMBED
+                flops += T * D_in * D
+            elif idx == len(self.Ts) - 1: # MERGER
+                flops += 4 * T * D * D + T * D * D_out
+            else:
+                flops += 4 * T * D * D + 2 * T * T * D
+                flops += 8 * T * D * D
+
+        return flops
+
+    def calculate_flops_dec(self):
+        D, D_kv, D_mlp = 3584, 512, 18944
+        flops = 0
+        for T in self.Ts:
+            flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
+            flops += 3 * (T * D * D_mlp)
+        return flops
+
+    @torch.no_grad()
+    def __call__(self, T, entropy, layer):
+        if self.entroPrune and (layer >= self.start_layer):
+            bid = torch.bucketize(torch.tensor(10.0 - float(entropy)), self.bins[1:-1], right=False).item()  # 0..K-1
+            pending = ~self.bin_used[:bid+1]
+            if pending.any():
+                keep_factor = (1.0 - self.drop_rate[:bid+1][pending]).prod().item()
+                self.bin_used[:bid+1] = True
+            else:
+                keep_factor = 1.0
+
+            keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
+            return T - keep
+        return 0

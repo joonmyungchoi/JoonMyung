@@ -10,7 +10,7 @@ from typing import Callable
 import torch
 import math
 
-def token_compression(x, info, layer_idx, others = []):
+def token_compression(x, info, EntroDropScheduler, layer_idx, others = []):
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
     B, T, D = x.shape
     if not info["use"] or T == 1:
@@ -18,16 +18,17 @@ def token_compression(x, info, layer_idx, others = []):
 
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
     r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
-                              (info["entroPrune"](T_vis, info["entropy"], layer_idx) if info["entroPrune"] is not None else 0)
-    if info["prune_r"]: r_throughput = info["prune_r"][layer_idx]
+                          EntroDropScheduler(T_vis, info["entropy"], layer_idx)
+    r_throughput = EntroDropScheduler.drop_ratio[layer_idx + 1] if EntroDropScheduler.benchmark else None
 
-    if (r_use or thr_use or ent_use):
+    if (r_use or thr_use or ent_use or r_throughput):
         prune_r, prune_thr = None, None
         if r_use: prune_r = int(T_vis * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
         if thr_use: prune_thr = info["prune_thr"]
         if ent_use: prune_r = ent_use
+        if r_throughput is not None: prune_r = r_throughput
 
-        scores = info["importance"]
+        scores = info["importance"] if not EntroDropScheduler.benchmark else torch.randn(1, T_vis, device=x.device)
         if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
         if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 
@@ -169,13 +170,13 @@ def pruning(
 
     if others is not None:
         T_remain = x_unprune.shape[-2]
-        if len(others) == 1:
+        if len(others) == 1: # RET :ENCODER
             cu_lens = others[0]
-            if cu_lens is not None: cu_lens[1] = T_remain
+            if cu_lens is not None: cu_lens[1:] = torch.cumsum(mask_block.reshape(2508, -1).sum(dim=0), dim=0) * group_num
             others = [cu_lens]
-        elif len(others) == 2:
+        elif len(others) == 2: # QA : ENCODER
             cu_lens, rotary_pos_emb = others
-            cu_lens[1] = T_remain
+            cu_lens[1:] = torch.cumsum(mask_block.reshape(2508, -1).sum(dim=0), dim=0) * group_num
             rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
             others = [cu_lens, rotary_pos_emb]
         elif len(others) == 3: # LLM
@@ -219,35 +220,3 @@ def needAttn(info, layer_idx):
     return False
 
 
-class EntroDropScheduler:
-    def __init__(self, start_layer, drop_rate):
-        self.drop_rate = torch.as_tensor(drop_rate, dtype=torch.float32)
-        self.K = len(drop_rate)
-        self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
-        self.start_layer = start_layer
-        self.tokens = []
-    def reset(self):
-        self.bin_used = torch.zeros(self.K, dtype=torch.bool)
-        self.tokens = []
-
-    @torch.no_grad()
-    def __call__(self, T, entropy, layer):
-
-        if layer < self.start_layer or entropy == None:
-            self.tokens.append(T)
-            return 0
-
-        if not hasattr(self, "bin_used"): self.reset()
-        T = int(T)
-
-        bid = torch.bucketize(torch.tensor(10.0 - float(entropy)), self.bins[1:-1], right=False).item()  # 0..K-1
-        pending = ~self.bin_used[:bid+1]
-        if pending.any():
-            keep_factor = (1.0 - self.drop_rate[:bid+1][pending]).prod().item()
-            self.bin_used[:bid+1] = True
-        else:
-            keep_factor = 1.0
-
-        keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
-        self.tokens.append(keep)
-        return T - keep
