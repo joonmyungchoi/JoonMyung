@@ -104,7 +104,7 @@ def benchmark(
     warm_up = int(runs * throw_out)
 
     token_enc, token_dec = n_page * 10032, int((n_page * 2508 + (n_page - 1) * 2) * (1 - drop_rate)) + 73
-    inputs = dataGenerator(case, batch_size=batch_size, n_page=n_page, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device)
+    inputs = dataGenerator(case, batch_size=batch_size, n_page=n_page, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device, dtype=dtype)
 
     total, times, peak_memories = 0, [], []
     for i in tqdm(range(runs), disable=not verbose, desc="Benchmarking"):

@@ -86,7 +86,7 @@ def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
 
     return result
 
-def getAnalysis(info, attn = None, feat = None, enc= False):
+def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
     if attn is not None and len(attn.shape) == 3: attn = attn[None]
     if feat is not None and len(feat.shape) == 2: feat = feat[None]
     info_temp = info["temp"]
@@ -156,13 +156,16 @@ def getAnalysis(info, attn = None, feat = None, enc= False):
         if importance is not None:
             info_comp["importance"] = importance
 
-        if feat is not None and info["efficiency"].entroPrune:
-            logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+        if feat is not None and info["efficiency"].entroPrune \
+            and layer_idx >= info["efficiency"].start_layer:
+            logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1]))
+            # logits = info_temp["lm_head"](feat[:, -1])
+
             log_probs = F.log_softmax(logits, dim=-1)
             probs = log_probs.exp()
             entropy = -(probs * log_probs).sum(dim=-1)
             info_comp["entropy"] = entropy
-
+    # 5.69
 def resetInfo(info, compression = None, ret=None, need_attn=False):
     info["efficiency"].reset()
     if info["analysis"]["use"]:
@@ -246,7 +249,7 @@ def pruning(x, mask, prop=False):
 
 class EntroDropScheduler:
     def __init__(self, enc):
-        self.drop_ratio = None
+        self.drop_ratio = None # 레이버 별 드랍 토큰 갯수 (평균)
         self.benchmark = False
         self.Ts = []
         self.Ts_full = []
@@ -261,13 +264,16 @@ class EntroDropScheduler:
         if not self.enc:
             self.drop_ratio = np.concatenate((np.array([0]), self.drop_ratio), axis=0)
 
-    def register_entroPruning(self, start_layer, drop_rate):
-        if type(drop_rate) == list:
-            self.drop_rate = torch.as_tensor(drop_rate, dtype=torch.float32)
-            self.K = len(drop_rate)
+    def register_entroPruning(self, start_layer, entro_drop_rate):
+        if type(entro_drop_rate) == list:
+            self.entro_drop_rate = torch.as_tensor(entro_drop_rate, dtype=torch.float32)
+            self.K = len(entro_drop_rate)
             self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
             self.start_layer = start_layer
             self.entroPrune = True
+        else:
+            self.entroPrune = False
+
 
     def reset(self):
         if self.entroPrune:
@@ -310,7 +316,7 @@ class EntroDropScheduler:
             bid = torch.bucketize(torch.tensor(10.0 - float(entropy)), self.bins[1:-1], right=False).item()  # 0..K-1
             pending = ~self.bin_used[:bid+1]
             if pending.any():
-                keep_factor = (1.0 - self.drop_rate[:bid+1][pending]).prod().item()
+                keep_factor = (1.0 - self.entro_drop_rate[:bid+1][pending]).prod().item()
                 self.bin_used[:bid+1] = True
             else:
                 keep_factor = 1.0

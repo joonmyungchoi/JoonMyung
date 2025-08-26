@@ -17,9 +17,14 @@ def token_compression(x, info, EntroDropScheduler, layer_idx, others = []):
         return x.squeeze(0) if TD else x, others
 
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
-    r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
+    if EntroDropScheduler.benchmark:
+        r_use, thr_use, ent_use = None, None, None
+        r_throughput = EntroDropScheduler.drop_ratio[layer_idx + 1]
+    else:
+        r_throughput = None
+        r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
                           EntroDropScheduler(T_vis, info["entropy"], layer_idx)
-    r_throughput = EntroDropScheduler.drop_ratio[layer_idx + 1] if EntroDropScheduler.benchmark else None
+
 
     if (r_use or thr_use or ent_use or r_throughput):
         prune_r, prune_thr = None, None
