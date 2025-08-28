@@ -71,13 +71,33 @@ def unPrune(values, source):
 
 def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
     attn_headavg = attn.mean(dim=1)
-    if not enc and attn.shape[2] != 1:
-        vis2textPre_ratio = attn_headavg[:, :start, start:end].mean(dim=-2).sum(dim=-1)
+    if not enc and attn.shape[2] != 1: # DECODER
         vis2vis_ratio  = attn_headavg[:, start:end, start:end].mean(dim=-2).sum(dim=-1)
-        vis2textPost_ratio = attn_headavg[:, end:-1, start:end].mean(dim=-2).sum(dim=-1)
+        vis2text_ratio = attn_headavg[:, end:-1, start:end].mean(dim=-2).sum(dim=-1)
         vis2last_ratio = attn_headavg[:, -1, start:end].sum(dim=-1)
-        result = torch.cat([vis2textPre_ratio, vis2vis_ratio, vis2textPost_ratio, vis2last_ratio], dim=0)
-    elif cls:
+        result = torch.cat([vis2vis_ratio, vis2text_ratio, vis2last_ratio], dim=0)
+    elif cls: # ENCODER & CLS
+        patch2cls_ratio   = attn_headavg[:, 1:, 1:].mean(dim=-2).sum(dim=-1)
+        patch2patch_ratio = attn_headavg[:,  0, 1:].sum(dim=-1)
+        result = torch.cat([patch2cls_ratio, patch2patch_ratio], dim=0)
+    else:
+        result = None
+
+    return result
+
+
+def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
+    attn_headavg = attn.mean(dim=1)
+    if not enc and attn.shape[2] != 1: # DECODER
+        prt = torch.stack([attn_headavg[:, :start, :start].sum(dim=-1).mean(dim=1),    attn_headavg[:, start:end, :start].sum(dim=-1).mean(dim=1),    attn_headavg[:, end:, :start].sum(dim=-1).mean(dim=1)], dim=-1)
+        vis = torch.stack([attn_headavg[:, :start, start:end].sum(dim=-1).mean(dim=1), attn_headavg[:, start:end, start:end].sum(dim=-1).mean(dim=1), attn_headavg[:, end:, start:end].sum(dim=-1).mean(dim=1)], dim=-1)
+        txt = torch.stack([attn_headavg[:, :start, end:].sum(dim=-1).mean(dim=1),      attn_headavg[:, start:end, end:].sum(dim=-1).mean(dim=1),      attn_headavg[:, end:, end:].sum(dim=-1).mean(dim=1)], dim=-1)
+        # torch.stack([attn_full[:, :start, :start].sum(dim=-1).mean(dim=1), attn_full[:, :i_start, i_start:i_end].sum(dim=-1).mean(dim=1), attn_full[:, :i_start, i_end:].sum(dim=-1).mean(dim=1)], dim=-1)
+        vis2vis_ratio  = attn_headavg[:, start:end, start:end].mean(dim=-2).sum(dim=-1)
+        vis2text_ratio = attn_headavg[:, end:-1, start:end].mean(dim=-2).sum(dim=-1)
+        vis2last_ratio = attn_headavg[:, -1, start:end].sum(dim=-1)
+        result = torch.cat([vis2vis_ratio, vis2text_ratio, vis2last_ratio], dim=0)
+    elif cls: # ENCODER & CLS
         patch2cls_ratio   = attn_headavg[:, 1:, 1:].mean(dim=-2).sum(dim=-1)
         patch2patch_ratio = attn_headavg[:,  0, 1:].sum(dim=-1)
         result = torch.cat([patch2cls_ratio, patch2patch_ratio], dim=0)
@@ -102,11 +122,12 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
 
         if attn is not None and attn.shape[2] != 1: # (B, H, T, T)
             attn = attn.to(torch.float32)
+
             # PART I.  INFORMATION
             info_ana["vis_attn_ratio"].append(getAttnFrom(attn, start=i_start, end=i_end, cls=cls, enc=enc))
-            if i_start: # [TXT_PRE, VIS, TXT_POST, EOS]
+            if i_start: # [START, TXT_PRE, VIS, TXT_POST, EOS]
                 attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)])
-                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)]).to(torch.float32)
+                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)])
                 info_ana["eos_attn_alloc"].append(attn_alloc_full)
                 info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
@@ -157,19 +178,20 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
             info_comp["importance"] = importance
 
         if feat is not None and info["efficiency"].entroPrune \
-            and layer_idx >= info["efficiency"].start_layer:
-            logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1]))
-            # logits = info_temp["lm_head"](feat[:, -1])
-
-            log_probs = F.log_softmax(logits, dim=-1)
-            probs = log_probs.exp()
-            entropy = -(probs * log_probs).sum(dim=-1)
-            info_comp["entropy"] = entropy
-    # 5.69
+            and layer_idx >= info["efficiency"].start_layer and layer_idx < 20:
+            logits = feat[:, -1] @ info_temp["lm_head"].weight.transpose(0, 1)
+            # logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+            # logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+            # log_probs = F.log_softmax(logits, dim=-1)
+            # probs = log_probs.exp()
+            # entropy = -(probs * log_probs).sum(dim=-1)
+            # info_comp["entropy"] = entropy
+    # 3584 *152064 / 1000000000
 def resetInfo(info, compression = None, ret=None, need_attn=False):
     info["efficiency"].reset()
     if info["analysis"]["use"]:
         # PART I. INFORMATION
+        info["analysis"]["attn"] = []
         info["analysis"]["vis_attn_ratio"]  = []
         info["analysis"]["eos_attn_alloc"] = []
         info["analysis"]["eos_attn_effi"]  = []
@@ -186,6 +208,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["analysis"]["entropy"]  = []
 
         info["analysis"]["white_mask"] = []
+
 
         # PART III. DIFFICULTY
         info["analysis"]["complexity"] = []
