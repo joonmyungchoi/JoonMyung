@@ -23,6 +23,7 @@ import os
 
 def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, HW = None, dtype=torch.float32, BL=False, cls=False):
     # values : (L, B, T)
+    # values : (L, T, T)
     values = values.to(dtype)
     if len(values.shape) == 2: values = values[None]
 
@@ -39,7 +40,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
     if BL: values = values.transpose(0, 1)
     if HW:
         values = values.reshape(-1, HW[0], HW[1])
-    return  values # LBF
+    return values # LBF
 
 def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K = None, use_threshold = None, mask = None,
                    col = 1, save_name=None, save = 1, border = False,  # COMMON
