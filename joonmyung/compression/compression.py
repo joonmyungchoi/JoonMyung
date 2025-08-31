@@ -177,11 +177,12 @@ def pruning(
         T_remain = x_unprune.shape[-2]
         if len(others) == 1: # RET :ENCODER
             cu_lens = others[0]
-            if cu_lens is not None: cu_lens[1:] = torch.cumsum(mask_block.reshape(2508, -1).sum(dim=0), dim=0) * group_num
+            if cu_lens is not None: cu_lens[1:] = torch.cumsum(torch.stack([mask_block[:cu_lens[c + 1]].sum() for c in range(len(cu_lens) - 1)]), dim=0) * group_num
             others = [cu_lens]
         elif len(others) == 2: # QA : ENCODER
             cu_lens, rotary_pos_emb = others
-            cu_lens[1:] = torch.cumsum(mask_block.reshape(2508, -1).sum(dim=0), dim=0) * group_num
+            cu_lens[1:] = torch.cumsum(torch.stack([mask_block[:cu_lens[c + 1]].sum() for c in range(len(cu_lens) - 1)]), dim=0) * group_num
+
             rotary_pos_emb = rotary_pos_emb.reshape(-1, group_num, 40).masked_select(mask_block.reshape(-1, 1, 1)).view(-1, 40)
             others = [cu_lens, rotary_pos_emb]
         elif len(others) == 3: # LLM

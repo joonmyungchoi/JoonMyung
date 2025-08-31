@@ -67,8 +67,6 @@ def unPrune(values, source):
     result[source] = values
     return result
 
-
-
 # def getAttnFrom(attn, start=None, end=None, cls=False, enc=False):
 #     attn_headavg = attn.mean(dim=1)
 #     if not enc and attn.shape[2] != 1: # DECODER
@@ -107,7 +105,34 @@ def getAttnRatio(attn, start=None, end=None, cls=False, enc=False):
 
     return result
 
+def getAttnPmax(attn):
+    # m, idx = attn[:, :, -1].max(dim=-1)  # (B,H)
+    m, idx = scores.max(dim=-1)
+    lse = torch.logsumexp(attn[:, :, -1], dim=-1)  # (B,H)
+    pmax = torch.exp(m - lse).clamp(max=1.0)
+
+    return pmax.mean(dim=1), pmax.std(dim=1)
+def getAttnEntropy(attn, k = 32):
+    scores = torch.cat([v[:, :, -1] for v in attn], dim=0)
+    B, H, Tk = scores.shape
+    topk_vals, _ = scores.topk(k=min(k, Tk), dim=-1)  # (B,H,k)
+    lse = torch.logsumexp(scores, dim=-1, keepdim=True)  # (B,H,1)
+    p_topk = torch.exp(topk_vals - lse)  # (B,H,k)
+    p_rest = (1.0 - p_topk.sum(dim=-1)).clamp_min(0.0)  # (B,H)
+    H_topk = -(p_topk * (topk_vals - lse)).sum(dim=-1)  # (B,H)
+    k_eff = p_topk.shape[-1]
+    rest_slots = (Tk - k_eff)
+    H_rest = torch.zeros_like(p_rest)
+    if rest_slots > 0:
+        H_rest = -p_rest * ((p_rest.clamp_min(1e-12)).log() - torch.log(torch.tensor(rest_slots, device=scores.device)))
+
+    H = H_topk + H_rest
+    return H
+def getDelta(info, feat, feat_prev, name):
+    info["analysis"]["interpret"][name].append((feat - feat_prev).norm(dim=-1))
+
 def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
+
     if attn is not None and len(attn.shape) == 3: attn = attn[None]
     if feat is not None and len(feat.shape) == 2: feat = feat[None]
     info_temp = info["temp"]
@@ -124,22 +149,25 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
         if attn is not None and attn.shape[2] != 1: # (B, H, T, T)
             attn = attn.to(torch.float32)
 
-            # PART I.  INFORMATION
             info_ana["attn_ratio"].append(getAttnRatio(attn, start=i_start, end=i_end, cls=cls, enc=enc))
-            if i_start: # [START, TXT_PRE, VIS, TXT_POST, EOS]
-                attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].sum(dim=-1)])
-                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len-1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len-1:].mean(dim=-1)])
+            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
+            if i_start != None and i_end != None: # DECODER
+                info_ana["attn"].append(attn)
+                attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].sum(dim=-1)])
+                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].mean(dim=-1)])
                 info_ana["eos_attn_alloc"].append(attn_alloc_full)
                 info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
-            # PART II. VISUALIZATION
-            info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
-            if i_start != None and i_end != None:
                 info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
                 info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
-            else:
+
+
+            else: # ENCODER
                 info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
 
+        # def getDelta(info, feat, feat_prev, name):
+        #     info["analysis"]["interpret"][name].append((feat - feat_prev).norm(dim=-1))
+        # info_ana["interpret_attn"].append(attn)
         if feat is not None and feat.shape[1] != 1:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
             if info_temp.get("lm_head", None):
