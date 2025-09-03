@@ -61,8 +61,6 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                     data = mask_to_image(img, mask)
                 else:
                     data = overlay(img, data)
-
-
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
 
@@ -147,12 +145,12 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         if not border:
             ax.set_axis_off()
 
-        if not vis_x: ax.xaxis.set_visible(False)
-        if not vis_y: ax.yaxis.set_visible(False)
+        ax.xaxis.set_visible(True if xticklabels != False else False)
+        ax.yaxis.set_visible(True if yticklabels != False else False)
 
         if title:
             ax.set(title="{} : {}".format(title, e))
-    # plt.tight_layout()
+
     if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
