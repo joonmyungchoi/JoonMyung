@@ -10,20 +10,20 @@ from typing import Callable
 import torch
 import math
 
-def token_compression(x, info, EntroDropScheduler, layer_idx, others = []):
+def token_compression(x, info, diffDropScheduler, layer_idx, others = []):
     [x, TD] = [x[None], True] if len(x.shape) == 2 else [x, False]
     B, T, D = x.shape
     if not info["use"] or T == 1:
         return x.squeeze(0) if TD else x, others
 
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
-    if EntroDropScheduler.benchmark:
+    if diffDropScheduler.benchmark:
         r_use, thr_use, ent_use = None, None, None
-        r_throughput = EntroDropScheduler.drop_ratio[layer_idx + 1]
+        r_throughput = diffDropScheduler.drop_ratio_avg[layer_idx + 1]
     else:
         r_throughput = None
         r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
-                          EntroDropScheduler(T_vis, info["entropy"], layer_idx)
+                          diffDropScheduler(T_vis, info["entropy"], layer_idx)
 
 
     if (r_use or thr_use or ent_use or r_throughput):
@@ -33,7 +33,7 @@ def token_compression(x, info, EntroDropScheduler, layer_idx, others = []):
         if ent_use: prune_r = ent_use
         if r_throughput is not None: prune_r = r_throughput
 
-        scores = info["importance"] if not EntroDropScheduler.benchmark else torch.randn(1, T_vis, device=x.device)
+        scores = info["importance"] if not diffDropScheduler.benchmark else torch.randn(1, T_vis, device=x.device)
         if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
         if info["size"] is None: info["size"] = torch.ones_like(x[..., 0, None]) # (B, T, 1)
 

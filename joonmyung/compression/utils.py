@@ -183,7 +183,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
         if importance is not None:
             info_comp["importance"] = importance
 
-        if feat is not None and info["efficiency"].entroPrune \
+        if feat is not None and info["efficiency"].activate \
             and layer_idx >= info["efficiency"].start_layer and layer_idx < 20:
             logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
             log_probs = F.log_softmax(logits, dim=-1)
@@ -236,21 +236,23 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["prePrune_layer"]  = compression[5]
         info["compression"]["prePrune_thr"]    = compression[6]
 
-        info["compression"]["entroPrune_layer"]       = compression[7]
-        info["compression"]["entroPrune_drop_ratio"]  = compression[8]
-        info["compression"]["propAttn"]               = compression[9]
+        info["compression"]["diffPrune_type"]        = compression[7]
+        info["compression"]["diffPrune_start"]       = compression[8]
+        info["compression"]["diffPrune_drop_ratio"]  = compression[9]
+        info["compression"]["diffPrune_drop_thr"]    = compression[10]
+        info["efficiency"].register_diffPruning(compression[7], compression[8], compression[9], compression[10])
 
-        info["compression"]["preAttn"]               = compression[10]
+        info["compression"]["preAttn"]               = compression[11]
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
-        info["efficiency"].register_entroPruning(compression[7], compression[8])
 
         info["compression"]["tau_sim"]      = 0
         info["compression"]["tau_info"]     = 0
         info["compression"]["tau_size"]     = 0
         info["compression"]["pooling_type"] = 0
         info["compression"]["mass"]         = 0
+        info["compression"]["propAttn"]     = 0
 
     if info["compression"]["use"]:
         info["compression"]["size"] = None
@@ -281,47 +283,78 @@ def pruning(x, mask, prop=False):
 
 
 
-class EntroDropScheduler:
+class DiffDropScheduler:
     def __init__(self, enc):
-        self.drop_ratio = None # 레이버 별 드랍 토큰 갯수 (평균)
+        self.drop_ratio_avg = None # 레이버 별 드랍 토큰 갯수 (평균)
         self.benchmark = False
         self.Ts = []
         self.Ts_full = []
-        self.entroPrune = False
+        self.activate = False
         self.enc = enc
 
+    def getDifficulty(self, layer_idx, data):
+        if layer_idx >= self.start_layer:
+            if self.diff_type == 1 and len(data) == 3:
+                lm_head, norm, feat = data
+                logits = lm_head(norm(feat[:, -1].detach()))
+                log_probs = F.log_softmax(logits, dim=-1)
+                probs = log_probs.exp()
+                entropy = -(probs * log_probs).sum(dim=-1)
+                return entropy
+            elif self.diff_type == 2 and len(data) == 2: # L2_Norm
+                feat, feat_prev = data
+                # delta =
+                return
+            elif self.diff_type == 3 and len(data) == 2:
+        return False
+
+        return True if True else False
     def benchmark_mode(self):
         self.reset()
         self.benchmark = True
         Ts = np.array(self.Ts_full).mean(axis=0, dtype=int)
-        self.drop_ratio = Ts[:-1] - Ts[1:]
-        # if not self.enc:
-        #     self.drop_ratio = np.concatenate((np.array([0]), self.drop_ratio), axis=0)
+        self.drop_ratio_avg = Ts[:-1] - Ts[1:]
 
-    def register_entroPruning(self, start_layer, entro_drop_rate):
-        if type(entro_drop_rate) == list:
-            self.entro_drop_rate = torch.as_tensor(entro_drop_rate, dtype=torch.float32)
-            self.K = len(entro_drop_rate)
-            self.bins = torch.linspace(0, 10, steps=self.K + 1)  # 오름차순 bins
-            self.start_layer = start_layer
-            self.entroPrune = True
+    def register_diffPruning(self, diff_type, start_layer, diff_drop_ratio, diff_drop_thr):
+        if type(diff_drop_ratio) != list:
+            self.activate = False
         else:
-            self.entroPrune = False
-
+            assert len(diff_drop_ratio) != len(diff_drop_thr)
+            self.diff_type = diff_type
+            self.start_layer = start_layer
+            self.diff_drop_ratio = torch.as_tensor(diff_drop_ratio, dtype=torch.float32)
+            self.diff_drop_thr = diff_drop_thr
+            self.K = len(diff_drop_ratio)
+            self.activate = True
 
     def reset(self):
-        if self.entroPrune:
+        if self.activate:
             self.bin_used = torch.zeros(self.K, dtype=torch.bool)
         if len(self.Ts):
             self.Ts_full.append(self.Ts)
         self.Ts = []
 
     def calculate_flops(self):
-        flops =  self.calculate_flops_enc() if self.enc else self.calculate_flops_dec()
+        flops = self.calculate_flops_enc() if self.enc else self.calculate_flops_dec()
         return flops / 1e+9
 
     def add_token(self, T):
         self.Ts.append(T)
+
+    @torch.no_grad()
+    def __call__(self, T, diff, layer):
+        if self.activate and (layer >= self.start_layer):
+            bid = torch.bucketize(torch.tensor(10.0 - float(diff)), self.bins[1:-1], right=False).item()  # 0..K-1
+            pending = ~self.bin_used[:bid+1]
+            if pending.any():
+                keep_factor = (1.0 - self.diff_drop_ratio[:bid+1][pending]).prod().item()
+                self.bin_used[:bid+1] = True
+            else:
+                keep_factor = 1.0
+
+            keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
+            return T - keep
+        return 0
 
     def calculate_flops_enc(self):
         D_in, D, D_out = 1176, 1280, 3584
@@ -344,21 +377,6 @@ class EntroDropScheduler:
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
             flops += 3 * (T * D * D_mlp)
         return flops
-
-    @torch.no_grad()
-    def __call__(self, T, entropy, layer):
-        if self.entroPrune and (layer >= self.start_layer):
-            bid = torch.bucketize(torch.tensor(10.0 - float(entropy)), self.bins[1:-1], right=False).item()  # 0..K-1
-            pending = ~self.bin_used[:bid+1]
-            if pending.any():
-                keep_factor = (1.0 - self.entro_drop_rate[:bid+1][pending]).prod().item()
-                self.bin_used[:bid+1] = True
-            else:
-                keep_factor = 1.0
-
-            keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
-            return T - keep
-        return 0
 
 
 

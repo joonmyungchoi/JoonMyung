@@ -1,2 +1,2 @@
 from .compression import token_compression
-from .utils import getAnalysis, resetInfo, EntroDropScheduler
+from .utils import getAnalysis, resetInfo, DiffDropScheduler
