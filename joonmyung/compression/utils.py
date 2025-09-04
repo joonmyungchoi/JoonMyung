@@ -306,6 +306,7 @@ class DiffDropScheduler:
                 # delta =
                 return
             elif self.diff_type == 3 and len(data) == 2:
+                pass
         return False
 
         return True if True else False
