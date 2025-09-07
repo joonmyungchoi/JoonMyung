@@ -23,7 +23,7 @@ def token_compression(x, info, diffDropScheduler, layer_idx, others = []):
     else:
         r_throughput = None
         r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
-                          diffDropScheduler(T_vis, info["entropy"], layer_idx)
+                          diffDropScheduler(T_vis, info["difficulty"], layer_idx)
 
 
     if (r_use or thr_use or ent_use or r_throughput):

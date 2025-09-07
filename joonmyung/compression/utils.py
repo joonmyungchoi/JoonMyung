@@ -183,17 +183,11 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
         if importance is not None:
             info_comp["importance"] = importance
 
-        if feat is not None and info["efficiency"].activate \
-            and layer_idx >= info["efficiency"].start_layer and layer_idx < 20:
-            logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
-            log_probs = F.log_softmax(logits, dim=-1)
-            probs = log_probs.exp()
-            entropy = -(probs * log_probs).sum(dim=-1)
-            info_comp["entropy"] = entropy
+        if feat is not None:
+            info["efficiency"].setDifficulty(info_comp, layer_idx, [0, info_temp["lm_head"], info_temp["norm"], feat])
 
-def resetInfo(info, compression = None, ret=None, need_attn=False):
-    info["efficiency"].reset()
-    info["analysis"]["attn"] = []
+
+def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cuda"):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["attn"] = []
@@ -240,7 +234,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
         info["compression"]["diffPrune_start"]       = compression[8]
         info["compression"]["diffPrune_drop_ratio"]  = compression[9]
         info["compression"]["diffPrune_drop_thr"]    = compression[10]
-        info["efficiency"].register_diffPruning(compression[7], compression[8], compression[9], compression[10])
+        info["efficiency"].register_diffPruning(compression[7], compression[8], compression[9], compression[10], device)
 
         info["compression"]["preAttn"]               = compression[11]
 
@@ -257,8 +251,9 @@ def resetInfo(info, compression = None, ret=None, need_attn=False):
     if info["compression"]["use"]:
         info["compression"]["size"] = None
         info["compression"]["source"] = None
-        info["compression"]["entropy"] = None
+        info["compression"]["difficulty"] = None
 
+    info["efficiency"].reset()
 
     if ret is not None:
         if ret:
@@ -287,50 +282,57 @@ class DiffDropScheduler:
     def __init__(self, enc):
         self.drop_ratio_avg = None # 레이버 별 드랍 토큰 갯수 (평균)
         self.benchmark = False
+        self.activate = False
         self.Ts = []
         self.Ts_full = []
-        self.activate = False
+        self.difficulty = []
         self.enc = enc
+        self.diff_type_input = [[1,3,5,7,9,11,13], [2,4,6,8,10,12,14]]
+        self.device = None
 
-    def getDifficulty(self, layer_idx, data):
-        if layer_idx >= self.start_layer:
-            if self.diff_type == 1 and len(data) == 3:
-                lm_head, norm, feat = data
-                logits = lm_head(norm(feat[:, -1].detach()))
-                log_probs = F.log_softmax(logits, dim=-1)
-                probs = log_probs.exp()
-                entropy = -(probs * log_probs).sum(dim=-1)
-                return entropy
-            elif self.diff_type == 2 and len(data) == 2: # L2_Norm
-                feat, feat_prev = data
-                # delta =
-                return
-            elif self.diff_type == 3 and len(data) == 2:
-                pass
-        return False
+    def setDifficulty(self, info_comp, layer_idx, data):
+        if self.activate and layer_idx >= self.start_layer:
+            data_from = data[0]
+            if self.diff_type == data_from:
+                if data_from == 0: # ENTROPY
+                    lm_head, norm, feat = data[1:]
+                    logits = lm_head(norm(feat[:, -1].detach()))
+                    log_probs = F.log_softmax(logits, dim=-1)
+                    probs = log_probs.exp()
+                    difficulty = -(probs * log_probs).sum(dim=-1)
+                elif data_from in self.diff_type_input[0]: # L2_Norm
+                    feat, feat_prev = data[1:]
+                    difficulty = (feat[:, -1] - feat_prev[:, -1]).norm(dim=-1)
+                elif data_from in self.diff_type_input[1]: # Cosine Similarity
+                    feat, feat_prev = data[1:]
+                    difficulty = 1 - torch.cosine_similarity(feat[:, -1], feat_prev[:, -1], dim=-1)
+                self.difficulty.append(difficulty)
+                info_comp["difficulty"] = difficulty
 
-        return True if True else False
     def benchmark_mode(self):
         self.reset()
         self.benchmark = True
         Ts = np.array(self.Ts_full).mean(axis=0, dtype=int)
         self.drop_ratio_avg = Ts[:-1] - Ts[1:]
 
-    def register_diffPruning(self, diff_type, start_layer, diff_drop_ratio, diff_drop_thr):
+    def register_diffPruning(self, diff_type, start_layer, diff_drop_thr, diff_drop_ratio, device):
         if type(diff_drop_ratio) != list:
             self.activate = False
         else:
-            assert len(diff_drop_ratio) != len(diff_drop_thr)
+            assert len(diff_drop_ratio) == len(diff_drop_thr)
+            self.device = device
             self.diff_type = diff_type
             self.start_layer = start_layer
-            self.diff_drop_ratio = torch.as_tensor(diff_drop_ratio, dtype=torch.float32)
-            self.diff_drop_thr = diff_drop_thr
+            self.diff_keep_ratio = 1 - torch.tensor(diff_drop_ratio, device=device)
+            self.diff_drop_thr = torch.tensor(diff_drop_thr, device=device)
             self.K = len(diff_drop_ratio)
             self.activate = True
 
+
     def reset(self):
         if self.activate:
-            self.bin_used = torch.zeros(self.K, dtype=torch.bool)
+            self.bin_used = torch.ones(self.K, dtype=torch.bool, device=self.device)
+            self.difficulty = []
         if len(self.Ts):
             self.Ts_full.append(self.Ts)
         self.Ts = []
@@ -343,18 +345,13 @@ class DiffDropScheduler:
         self.Ts.append(T)
 
     @torch.no_grad()
-    def __call__(self, T, diff, layer):
-        if self.activate and (layer >= self.start_layer):
-            bid = torch.bucketize(torch.tensor(10.0 - float(diff)), self.bins[1:-1], right=False).item()  # 0..K-1
-            pending = ~self.bin_used[:bid+1]
-            if pending.any():
-                keep_factor = (1.0 - self.diff_drop_ratio[:bid+1][pending]).prod().item()
-                self.bin_used[:bid+1] = True
-            else:
-                keep_factor = 1.0
-
-            keep = max(1, int(torch.ceil(torch.tensor(keep_factor * T)).item()))
-            return T - keep
+    def __call__(self, T, difficulty, layer):
+        if self.activate and difficulty is not None:
+            activate = self.bin_used * (self.diff_drop_thr < difficulty)
+            if activate.sum():
+                T_prune = int(T * (1 - self.diff_keep_ratio[activate].prod()))
+                self.bin_used = self.bin_used * ~activate
+                return T_prune
         return 0
 
     def calculate_flops_enc(self):
@@ -363,9 +360,9 @@ class DiffDropScheduler:
         for idx, T in enumerate(self.Ts): #
             if idx == 0: # PATCH_EMBED
                 flops += T * D_in * D
-            elif idx == len(self.Ts) - 1: # MERGER
+            elif idx == len(self.Ts) - 1: # 1개 : MERGER
                 flops += 4 * T * D * D + T * D * D_out
-            else:
+            else: # 32개
                 flops += 4 * T * D * D + 2 * T * T * D
                 flops += 8 * T * D * D
 
