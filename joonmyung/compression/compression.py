@@ -28,7 +28,7 @@ def token_compression(x, info, diffDropScheduler, layer_idx, others = []):
 
     if (r_use or thr_use or ent_use or r_throughput):
         prune_r, prune_thr = None, None
-        if r_use: prune_r = int(T_vis * info["prune_r"]) if info["prune_r"] < 1 else info["prune_r"]
+        if r_use: prune_r = int(T_vis * info["prune_r"])
         if thr_use: prune_thr = info["prune_thr"]
         if ent_use: prune_r = ent_use
         if r_throughput is not None: prune_r = r_throughput

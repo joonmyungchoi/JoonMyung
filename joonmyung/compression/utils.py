@@ -183,7 +183,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
         if importance is not None:
             info_comp["importance"] = importance
 
-        if feat is not None:
+        if feat is not None and info["efficiency"].activate:
             info["efficiency"].setDifficulty(info_comp, layer_idx, [0, info_temp["lm_head"], info_temp["norm"], feat])
 
 
@@ -216,7 +216,6 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["analysis"]["complexity"] = []
         info["analysis"]["interpret"] = defaultdict(list)
 
-
     info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
         info["compression"]["use"] = True
@@ -237,6 +236,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["efficiency"].register_diffPruning(compression[7], compression[8], compression[9], compression[10], device)
 
         info["compression"]["preAttn"]               = compression[11]
+
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
