@@ -53,12 +53,11 @@ def getAttnRatio(attn, start=None, end=None, cls=False, enc=False):
     attn_headavg = attn.mean(dim=1) # (1(B), 2551(T), 2551(T))
     N = attn.shape[2]
     if not enc and N != 1: # DECODER
-        prt_s    = splitAttn(attn_headavg[:,  :1],           start = start, end = end)
         prt      = splitAttn(attn_headavg[:, :start],        start = start, end = end)
         vis      = splitAttn(attn_headavg[:, start:end],     start = start, end = end)
         txt      = splitAttn(attn_headavg[:, end:],          start = start, end = end)
         txt_e    = splitAttn(attn_headavg[:, -1:],           start = start, end = end)
-        result_full = torch.stack([prt_s, prt, vis, txt, txt_e], dim=1)
+        result_full = torch.stack([prt, vis, txt, txt_e], dim=1)
         results_text = attn_headavg[:, end:, end:].sum(dim=1) / torch.arange(N - end, 0, -1, device=attn.device)
         return result_full, results_text
     elif cls: # ENCODER & CLS
@@ -125,7 +124,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
             info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
 
             if i_start != None and i_end != None: # DECODER
-                info_ana["attn"].append(attn.mean(dim=(0, 1))[-1])
+                # info_ana["attn"].append(attn.mean(dim=(0, 1))[-1])
                 ratio_type, ratio_text = getAttnRatio(attn, start=i_start, end=i_end, cls=cls, enc=enc)
                 info_ana["attn_ratio_type"].append(ratio_type)
                 info_ana["attn_ratio_text"].append(ratio_text)
