@@ -236,7 +236,6 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
 
         info["compression"]["preAttn"]               = compression[11]
 
-
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
 
