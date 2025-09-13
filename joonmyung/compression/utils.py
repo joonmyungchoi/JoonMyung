@@ -124,7 +124,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
             info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
 
             if i_start != None and i_end != None: # DECODER
-                # info_ana["attn"].append(attn.mean(dim=(0, 1))[-1])
+                info_ana["attn"].append(attn.mean(dim=(0, 1))[-1])
                 ratio_type, ratio_text = getAttnRatio(attn, start=i_start, end=i_end, cls=cls, enc=enc)
                 info_ana["attn_ratio_type"].append(ratio_type)
                 info_ana["attn_ratio_text"].append(ratio_text)
@@ -285,7 +285,7 @@ class DiffDropScheduler:
         self.Ts_full = []
         self.difficulty = []
         self.enc = enc
-        self.diff_type_input = [[1,3,5,7,9,11,13], [2,4,6,8,10,12,14]]
+        self.diff_type_input = [[1,3,5,7,9,11,13], [2,4,6,8,10,12,14], [15, 16, 17, 18]]
         self.device = None
 
     def setDifficulty(self, info_comp, layer_idx, data):
@@ -298,13 +298,17 @@ class DiffDropScheduler:
                     log_probs = F.log_softmax(logits, dim=-1)
                     probs = log_probs.exp()
                     difficulty = -(probs * log_probs).sum(dim=-1)
-                elif data_from in self.diff_type_input[0]: # L2_Norm
+                elif data_from in self.diff_type_input[0]: # Delta L2_Norm
                     feat, feat_prev = data[1:]
                     difficulty = (feat[:, -1] - feat_prev[:, -1]).norm(dim=-1)
                 elif data_from in self.diff_type_input[1]: # Cosine Similarity
                     feat, feat_prev = data[1:]
                     difficulty = 1 - torch.cosine_similarity(feat[:, -1], feat_prev[:, -1], dim=-1)
+                elif data_from in self.diff_type_input[2]: # L2_Norm
+                    feat = data[1:]
+                    difficulty = feat[:, -1].norm(dim=-1)
                 self.difficulty.append(difficulty)
+
                 info_comp["difficulty"] = difficulty
 
     def benchmark_mode(self):
