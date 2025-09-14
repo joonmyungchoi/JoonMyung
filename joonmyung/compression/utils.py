@@ -332,7 +332,7 @@ class DiffDropScheduler:
                     feat, feat_prev = data[1:]
                     difficulty = 1 - torch.cosine_similarity(feat[:, -1], feat_prev[:, -1], dim=-1)
                 elif data_from in self.diff_type_input[2]: # L2_Norm
-                    feat = data[1:]
+                    feat = data[1]
                     difficulty = feat[:, -1].norm(dim=-1)
                 self.difficulty.append(difficulty)
 
