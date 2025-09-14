@@ -100,10 +100,37 @@ def topk_entropy_from_scores(scores, k = 32):
     H = H_topk + H_rest
     return H
 
-def getDelta(info, feat, feat_prev, name):
-    if feat.shape[1] != 1:
-        info["analysis"]["interpret"][f"{name}_l2"].append(torch.round((feat - feat_prev).norm(dim=-1).to(torch.float32))) # (B, T)
-        info["analysis"]["interpret"][f"{name}_cosine"].append(torch.round(torch.cosine_similarity(feat, feat_prev, dim=-1).to(torch.float32), decimals=3)) # (B, T)
+def l2Norm(A, B = None, d = 2):
+    if B == None:
+        return torch.round(A.norm(dim=-1), decimals=d)
+    else:
+        return torch.round((A - B).norm(dim=-1), decimals=d)
+
+def cossim(A, B, d):
+    return torch.round(torch.cosine_similarity(A, B, dim=-1), decimals=d)
+
+def getRepShift(info, input_B, input_B_N, output, output_res, name, input_L = None):
+    if input_B.shape[1] != 1:
+        input_B, input_B_N, output, output_res = input_B[0, -1].to(torch.float32), input_B_N[0, -1].to(torch.float32), output[0, -1].to(torch.float32), output_res[0, -1].to(torch.float32)
+
+        info["analysis"]["interpret"][f"{name}_delta_l2"].append(l2Norm(input_B,     output, d=2)) # EXPERIMENTS ✓
+        info["analysis"]["interpret"][f"{name}_delta_l2_N"].append(l2Norm(input_B_N, output, d=2))
+        info["analysis"]["interpret"][f"{name}_delta_l2_R"].append(l2Norm(input_B,   output_res, d=2))
+
+        info["analysis"]["interpret"][f"{name}_cos"].append(cossim(input_B,     output, d=3))
+        info["analysis"]["interpret"][f"{name}_cos_N"].append(cossim(input_B_N, output, d=3))
+        info["analysis"]["interpret"][f"{name}_cos_R"].append(cossim(input_B,   output_res, d=3))
+
+        info["analysis"]["interpret"][f"{name}_l2"].append(l2Norm(output, d=2))
+        info["analysis"]["interpret"][f"{name}_l2_R"].append(l2Norm(output_res, d=2))
+        if input_L is not None:
+            input_L = input_L[0, -1].to(torch.float32)
+            info["analysis"]["interpret"][f"FULL_delta_l2_L"].append(l2Norm(input_L, output_res, d=2))
+            info["analysis"]["interpret"][f"FULL_cos_L"].append(cossim(input_L, output_res, d=3))
+
+
+
+
 
 def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
     if attn is not None and len(attn.shape) == 3: attn = attn[None]

@@ -145,8 +145,8 @@ def drawHeatmap(matrixes, col=1, title=[], fmt=1, p=False,
         if not border:
             ax.set_axis_off()
 
-        ax.xaxis.set_visible(True if xticklabels != False else False)
-        ax.yaxis.set_visible(True if yticklabels != False else False)
+        ax.xaxis.set_visible(True if xticklabels else False)
+        ax.yaxis.set_visible(True if yticklabels else False)
 
         if title:
             ax.set(title="{} : {}".format(title, e))
