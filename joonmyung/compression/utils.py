@@ -210,7 +210,7 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
             info_comp["importance"] = importance
 
         if feat is not None and info["efficiency"].activate:
-            info["efficiency"].setDifficulty(info_comp, layer_idx, [0, info_temp["lm_head"], info_temp["norm"], feat])
+            info["efficiency"].setDifficulty(info_comp, layer_idx, [0, feat, info_temp["lm_head"], info_temp["norm"]])
 
 
 def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cuda"):
@@ -317,14 +317,14 @@ class DiffDropScheduler:
 
     def setDifficulty(self, info_comp, layer_idx, data):
         if self.activate and layer_idx >= self.start_layer:
-            data_from = data[0]
-            if self.diff_type == data_from:
+            data_from, feat = data[:2]
+            if self.diff_type == data_from and feat.shape[1] > 1:
                 if data_from == 0: # ENTROPY
-                    lm_head, norm, feat = data[1:]
+                    feat, lm_head, norm = data[1:]
                     logits = lm_head(norm(feat[:, -1].detach()))
                     log_probs = F.log_softmax(logits, dim=-1)
                     probs = log_probs.exp()
-                    difficulty = -(probs * log_probs).sum(dim=-1)
+                    difficulty = 10 + (probs * log_probs).sum(dim=-1)
                 elif data_from in self.diff_type_input[0]: # Delta L2_Norm
                     feat, feat_prev = data[1:]
                     difficulty = (feat[:, -1] - feat_prev[:, -1]).norm(dim=-1)
