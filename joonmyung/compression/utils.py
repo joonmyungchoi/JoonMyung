@@ -345,7 +345,7 @@ class DiffDropScheduler:
         self.drop_ratio_avg = Ts[:-1] - Ts[1:]
 
     def register_diffPruning(self, diff_type, start_layer, diff_drop_thr, diff_drop_ratio, device):
-        if type(diff_drop_ratio) != list:
+        if type(diff_drop_thr) != list:
             self.activate = False
         else:
             assert len(diff_drop_ratio) == len(diff_drop_thr)
