@@ -25,7 +25,8 @@ def getImpFastV(attn, start=None, end=None):
     attn_headavg = attn.mean(dim=1)
     importance = attn_headavg[:, -1, start:end]
     return importance
-
+def getRepShift(feat, feat_prev, start = None, end = None):
+    return torch.norm(feat - feat_prev, p=2, dim=-1)[:, start:end]
 def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
@@ -109,7 +110,7 @@ def l2Norm(A, B = None, d = 2):
 def cossim(A, B, d):
     return torch.round(torch.cosine_similarity(A, B, dim=-1), decimals=d)
 
-def getRepShift(info, input_B, input_B_N, output, output_res, name, input_L = None):
+def getDifficulty(info, input_B, input_B_N, output, output_res, name, input_L = None):
     if input_B.shape[1] != 1:
         input_B, input_B_N, output, output_res = input_B[0, -1].to(torch.float32), input_B_N[0, -1].to(torch.float32), output[0, -1].to(torch.float32), output_res[0, -1].to(torch.float32)
 
@@ -132,7 +133,7 @@ def getRepShift(info, input_B, input_B_N, output, output_res, name, input_L = No
 
 
 
-def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
+def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = None, enc= False, layer_idx = False):
     if attn is not None and len(attn.shape) == 3: attn = attn[None]
     if feat is not None and len(feat.shape) == 2: feat = feat[None]
     info_temp = info["temp"]
@@ -170,13 +171,16 @@ def getAnalysis(info, attn = None, feat = None, enc= False, layer_idx = False):
 
         if feat is not None and feat.shape[1] != 1:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
+            info_ana["shift"].append(unPrune(getRepShift(feat_mlp, feat_input, i_start, i_end), source_vis))
+
+
             feat_norm = F.normalize(feat.to(torch.float32), dim=-1)  # ↑ : 단순
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
             # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
-            info_ana["complexity"].append(complexity)
+            info_ana["img_complexity"].append(complexity)
 
-            if i_start != None: # ENCODER
-                # PART I. Entropy / Logit / PRED
+            if i_start != None: # DECODER : Entropy / Logit / PRED
+
                 logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
@@ -231,6 +235,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["analysis"]["fastV"]    = []
         info["analysis"]["fitPrune"] = []
 
+        info["analysis"]["shift"]    = []
         info["analysis"]["norm2"]    = []
         info["analysis"]["pred"]     = []
         info["analysis"]["logit"]    = []
@@ -239,7 +244,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["analysis"]["white_mask"] = []
 
         # PART III. DIFFICULTY
-        info["analysis"]["complexity"] = []
+        info["analysis"]["img_complexity"] = []
         info["analysis"]["interpret"] = defaultdict(list)
 
     info["compression"]["img_idx"] = [None, None, None]

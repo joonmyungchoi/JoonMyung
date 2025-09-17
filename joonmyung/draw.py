@@ -35,7 +35,9 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
         values = values / values.sum(dim=dim, keepdim=True)
     # TODO : BATCH-SIZE
     if quantile: values = values.clamp(values.quantile(quantile, dim=dim, keepdim=True), values.quantile(1-quantile, dim=dim, keepdim=True))
-    if sort: values = torch.argsort(values, dim=dim, descending = descending).argsort(dim=dim, descending=descending)
+    if sort:
+        # values = torch.argsort(values, dim=dim, descending=descending).argsort(dim=dim, descending=descending)
+        _, values = torch.unique(values, sorted=True, return_inverse=True)
 
     if BL: values = values.transpose(0, 1)
     if HW:
@@ -49,18 +51,16 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                    **kwargs):
     if deactivate:
         return
+    if K:
+        mask, data = generate_mask(data, topK=K, use_threshold=use_threshold)  # (6, 32, 32)
 
     if vis_heatmap:
         drawHeatmap(data, fmt=fmt, col=col, border=border, fontsize=fontsize, cbar=cbar,
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
-        if img is not None:
-            if vis_overlay: # 이미지와 겹치기
-                if K or mask is not None:
-                    if mask is None: mask = generate_mask(data, topK=K, use_threshold=use_threshold) # (6, 32, 32)
-                    data = mask_to_image(img, mask)
-                else:
-                    data = overlay(img, data)
+        if img is not None and vis_overlay: # 이미지 겹치기
+            data = mask_to_image(img, mask) if mask is not None else overlay(img, data)
+
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
 
@@ -68,7 +68,7 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
 
 def generate_mask(data, topK=10, use_threshold = False, F = 1):
     shape, dtype = data.shape, data.dtype # (L * B, T, T)
-    data = data.reshape(-1, F, *shape[-2:]) # (L * B, T, T)
+    data = data.reshape(-1, F, *shape[-2:]) # (L * B, F, T, T)
     flattened = data.view(data.shape[0], -1)
 
     if use_threshold:
@@ -80,7 +80,8 @@ def generate_mask(data, topK=10, use_threshold = False, F = 1):
         top_K_indices = sorted_indices[:, :K]
         mask = torch.zeros_like(flattened, dtype=dtype)
         mask.scatter_(1, top_K_indices, 1)
-    return mask.view(shape)
+    mask = mask.view(shape)
+    return mask, data.view(shape) * mask
 
 def mask_to_image(image, mask):
     Fr, C, H, W = image.shape # (1, 3, 448, 448)
