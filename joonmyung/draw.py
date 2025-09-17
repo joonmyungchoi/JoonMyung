@@ -493,3 +493,18 @@ def make_visualization(
 
     return vis_prune, vis_merge  # (12, 3, 224, 224)
 
+
+
+def getDistribution(data, bin_edges):
+    n_layers, n_samples = data.shape
+    num_bins = len(bin_edges) - 1
+
+    counts = np.zeros((n_layers, num_bins), dtype=int)
+
+    for layer in range(n_layers):
+        d_vals = data[layer]
+        for i in range(num_bins):
+            low, high = bin_edges[i], bin_edges[i + 1]
+            mask = (d_vals >= low) & (d_vals < high)
+            counts[layer, i] = mask.sum()
+    return counts
