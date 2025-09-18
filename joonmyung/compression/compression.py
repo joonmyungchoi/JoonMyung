@@ -18,20 +18,21 @@ def token_compression(x, info, diffDropScheduler, layer_idx, others = []):
 
     T_vis = T if info["img_idx"][0] == None else info["img_idx"][1] - info["img_idx"][0]
     if diffDropScheduler.benchmark:
-        r_use, thr_use, ent_use = None, None, None
+        r_use, r_diff = None, None
         r_throughput = diffDropScheduler.drop_ratio_avg[layer_idx + 1]
     else:
         r_throughput = None
-        r_use, thr_use, ent_use = (info["prune_r_layer"] == layer_idx and info["prune_r"]), (info["prune_thr_layer"] == layer_idx and info["prune_thr"]), \
-                          diffDropScheduler(T_vis, info["difficulty"], layer_idx)
+        r_use, r_diff = (info["prune_layer"] == layer_idx and info["prune_r"]), \
+                          diffDropScheduler(info["difficulty"], layer_idx)
 
-
-    if (r_use or thr_use or ent_use or r_throughput):
+    if (r_use or r_diff or r_throughput):
         prune_r, prune_thr = None, None
-        if r_use: prune_r = int(T_vis * info["prune_r"])
-        if thr_use: prune_thr = info["prune_thr"]
-        if ent_use: prune_r = ent_use
-        if r_throughput is not None: prune_r = r_throughput
+        if r_throughput is not None:
+            prune_r = r_throughput
+        elif info["r_type"] == 0:
+            prune_r = int(T_vis * info["prune_r"] if r_use else r_diff)
+        else:
+            prune_thr = info["prune_thr"] if r_use else r_diff
 
         scores = info["importance"] if not diffDropScheduler.benchmark else torch.randn(1, T_vis, device=x.device)
         if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
@@ -212,16 +213,14 @@ def pruning(
 def needNaive(info, layer_idx):
     if info["compression"]["use"]:
         if info["compression"]["info_type"] in [1, 2, 3, 4]:
-            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx) or \
-                    (info["compression"]["prune_thr"] and info["compression"]["prune_thr_layer"] == layer_idx):
+            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx):
                 return True
     return False
 
 def needAttn(info, layer_idx):
     if info["compression"]["use"]:
         if info["compression"]["info_type"] in [1, 2, 3, 4]:
-            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx) or \
-                    (info["compression"]["prune_thr"] and info["compression"]["prune_thr_layer"] == layer_idx):
+            if (info["compression"]["prune_r"] and info["compression"]["prune_r_layer"] == layer_idx):
                 return True
     return False
 

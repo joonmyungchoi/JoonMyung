@@ -173,14 +173,11 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
             info_ana["shift"].append(unPrune(getRepShift(feat_mlp, feat_input, i_start, i_end), source_vis))
 
-
             feat_norm = F.normalize(feat.to(torch.float32), dim=-1)  # ↑ : 단순
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
             # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
             info_ana["img_complexity"].append(complexity)
-
             if i_start != None: # DECODER : Entropy / Logit / PRED
-
                 logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
@@ -250,23 +247,19 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
     info["compression"]["img_idx"] = [None, None, None]
     if compression is not None:
         info["compression"]["use"] = True
-        info["compression"]["info_type"]       = compression[0]
-        info["compression"]["prune_r_layer"]   = compression[1]
-        info["compression"]["prune_r"]         = compression[2]
+        info["compression"]["info_type"]             = compression[0]
+        info["compression"]["r_type"]                = compression[1]
+        info["compression"]["prune_layer"]           = compression[2]
+        info["compression"]["prune_r"]               = compression[3]
+        info["compression"]["prePrune_layer"]        = compression[4]
+        info["compression"]["prePrune_r"]            = compression[5]
+        info["compression"]["diffPrune_type"]        = compression[6]
+        info["compression"]["diffPrune_start"]       = compression[7]
+        info["compression"]["diffPrune_drop_ratio"]  = compression[8]
+        info["compression"]["diffPrune_drop_thr"]    = compression[9]
+        info["compression"]["preAttn"]               = compression[10]
 
-        info["compression"]["prune_thr_layer"] = compression[3]
-        info["compression"]["prune_thr"]       = compression[4]
-
-        info["compression"]["prePrune_layer"]  = compression[5]
-        info["compression"]["prePrune_thr"]    = compression[6]
-
-        info["compression"]["diffPrune_type"]        = compression[7]
-        info["compression"]["diffPrune_start"]       = compression[8]
-        info["compression"]["diffPrune_drop_ratio"]  = compression[9]
-        info["compression"]["diffPrune_drop_thr"]    = compression[10]
-        info["efficiency"].register_diffPruning(compression[7], compression[8], compression[9], compression[10], device)
-
-        info["compression"]["preAttn"]               = compression[11]
+        info["efficiency"].register_diffPruning(compression[1], compression[6], compression[7], compression[8], compression[9], device)
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
@@ -349,15 +342,16 @@ class DiffDropScheduler:
         Ts = np.array(self.Ts_full).mean(axis=0, dtype=int)
         self.drop_ratio_avg = Ts[:-1] - Ts[1:]
 
-    def register_diffPruning(self, diff_type, start_layer, diff_drop_thr, diff_drop_ratio, device):
+    def register_diffPruning(self, r_type, diff_type, start_layer, diff_drop_thr, diff_drop_ratio, device):
         if type(diff_drop_thr) != list:
             self.activate = False
         else:
             assert len(diff_drop_ratio) == len(diff_drop_thr)
+            self.r_type = r_type
             self.device = device
             self.diff_type = diff_type
             self.start_layer = start_layer
-            self.diff_keep_ratio = 1 - torch.tensor(diff_drop_ratio, device=device)
+            self.diff_drop_ratio = torch.tensor(diff_drop_ratio, device=device)
             self.diff_drop_thr = torch.tensor(diff_drop_thr, device=device)
             self.K = len(diff_drop_ratio)
             self.activate = True
@@ -379,13 +373,19 @@ class DiffDropScheduler:
         self.Ts.append(T)
 
     @torch.no_grad()
-    def __call__(self, T, difficulty, layer):
+    def __call__(self, difficulty, layer):
         if self.activate and difficulty is not None:
             activate = self.bin_used * (self.diff_drop_thr < difficulty)
             if activate.sum():
-                T_prune = int(T * (1 - self.diff_keep_ratio[activate].prod()))
-                self.bin_used = self.bin_used * ~activate
-                return T_prune
+                if self.r_type == 0:
+                    T_prune = 1 - (1 - self.diff_drop_ratio[activate]).prod()
+                    self.bin_used = self.bin_used * ~activate
+                    return T_prune
+                else:
+                    bin_idx = (self.bin_used == True).nonzero(as_tuple=True)[0][0].item()
+                    thr_prune = self.diff_drop_ratio[bin_idx]
+                    self.bin_used[bin_idx] = False
+                    return thr_prune
         return 0
 
     def calculate_flops_enc(self):
@@ -409,7 +409,6 @@ class DiffDropScheduler:
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
             flops += 3 * (T * D * D_mlp)
         return flops
-
 
 
 
