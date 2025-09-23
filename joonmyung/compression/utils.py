@@ -1,9 +1,38 @@
+from joonmyung.compression.compression import needAttn
 from collections import defaultdict
-
-from joonmyung.compression.compression import needAttn, needNaive
 import torch.nn.functional as F
 import numpy as np
 import torch
+
+import torch
+import torch.nn.functional as F
+
+def getDivPrune(feat, r_type, r_prune, i_start=None, i_end=None):
+    if len(feat.shape) == 3:
+        feat = feat[0]
+    if i_start is not None:
+        feat = feat[i_start:i_end]
+    T_vis, device = feat.shape[0], feat.device
+
+    feat_norm = feat / feat.norm(dim=-1, keepdim=True)
+    feat_dist = 1 - (feat_norm @ feat_norm.t()) # (B, T, D)
+    r_keep = int(T_vis * (1 - r_prune))
+
+    unprune_idx = torch.empty(T_vis, dtype=torch.long, device=feat.device)
+    for i in range(T_vis):
+        m2 = feat_dist if i == 0 else torch.index_select(feat_dist, 0, torch.index_select(unprune_idx, 0, torch.arange(0, i, device=feat.device)))  # (1, 576)
+        scores = torch.topk(m2, 2, dim=0, largest=False).values[1, :] if i == 0 else torch.min(m2, dim=0).values  # 576
+        add_score, add_idx = torch.max(scores, dim=0)
+        unprune_idx[i] = add_idx
+        if r_type == 0 and i == r_keep:
+            break
+        if r_type == 1 and add_score < r_prune:
+            break
+    unprune_idx = unprune_idx[:i]
+    mask = torch.zeros(T_vis, dtype=torch.float32, device=device)
+    mask[unprune_idx] = 1
+    return mask
+
 
 def getVisualToken(x, start = None, end = None):
     if x == None:
@@ -206,6 +235,8 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             importance = getComplexity(feat, start=i_start, end = i_end)
         elif info_comp["info_type"] in [7, 8]:  # attn : pre_propagate
             importance = info_comp["attn"][:, info_comp["preAttn"], i_start:i_end]
+        elif feat is not None and info_comp["info_type"] == 9 and layer_idx == info_comp["prune_layer"]:
+            importance = getDivPrune(feat, info_comp["r_type"], info_comp["prune_r"], i_start, i_end)
 
         if importance is not None:
             info_comp["importance"] = importance
@@ -373,7 +404,7 @@ class DiffDropScheduler:
         self.Ts.append(T)
 
     @torch.no_grad()
-    def __call__(self, difficulty, layer):
+    def __call__(self, difficulty):
         if self.activate and difficulty is not None:
             activate = self.bin_used * (self.diff_drop_thr < difficulty)
             if activate.sum():
@@ -409,25 +440,3 @@ class DiffDropScheduler:
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
             flops += 3 * (T * D * D_mlp)
         return flops
-
-
-
-# def getDivPrune(feat, r_keep):
-#     feat_norm = feat / feat.norm(dim=-1, keepdim=True)
-#     feat_sim = 1 - torch.mm(feat_norm, feat_norm.t())
-#
-#     s = torch.empty(r_keep, dtype=torch.long, device=feat.device)
-#     for i in range(r_keep):
-#         if i == 0:
-#             m2 = feat_sim  # (576, 576)
-#         else:
-#             m2 = torch.index_select(feat_sim, 0, torch.index_select(s, 0, torch.arange(0, i, device=cosine_matrix.device)))  # (1, 576)
-#
-#         if i == 0:
-#             scores = torch.topk(m2, 2, dim=0, largest=False).values[1, :]  # 576
-#         else:
-#             scores = torch.min(m2, dim=0).values  # 576
-#
-#         phrase_to_add_idx = torch.argmax(scores)  # 234
-#         s[i] = phrase_to_add_idx
-#     return s
