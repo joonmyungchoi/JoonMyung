@@ -32,7 +32,7 @@ def token_compression(x, info, diffDropScheduler, layer_idx, others = []):
         elif info["r_type"] == 0:
             prune_r = int(T_vis * info["prune_r"]) if r_use else int(T_vis * r_diff)
         else:
-            prune_thr = info["prune_thr"] if r_use else r_diff
+            prune_thr = info["prune_r"] if r_use else r_diff
 
         scores = info["importance"] if not diffDropScheduler.benchmark else torch.randn(1, T_vis, device=x.device)
         if info["source"] is None: info["source"] = torch.ones((B, (T // info["group_num"]) ), dtype=torch.bool, device=x.device)
