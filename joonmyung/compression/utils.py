@@ -237,6 +237,9 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             importance = info_comp["attn"][:, info_comp["preAttn"], i_start:i_end]
         elif feat is not None and info_comp["info_type"] == 9 and layer_idx == info_comp["prune_layer"]:
             importance = getDivPrune(feat, info_comp["r_type"], info_comp["prune_r"], i_start, i_end)
+        elif feat is not None and info_comp["info_type"] == 10: # RANDOM
+            T = i_end - i_start if i_start else feat.shape[1]
+            importance = torch.rand((1, T), device=feat.device)
 
         if importance is not None:
             info_comp["importance"] = importance
