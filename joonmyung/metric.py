@@ -47,6 +47,12 @@ def dataGenerator(case, batch_size=1, n_page=1, token_enc=10032, token_dec = 256
         input_embeds = torch.rand((1, token_dec, 3584), device=device, dtype=dtype)
         cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int32)
         data = [None, attention_mask, position_ids, None, input_embeds, True, False, False, True, cache_position]
+    elif case == "RET_CACHE":
+        attention_mask = torch.ones((1, 1, token_dec, token_dec), device=device, dtype=torch.bool)
+        position_ids = torch.arange(0, token_dec, device=device, dtype=torch.int32)[None]
+        input_embeds = torch.rand((1, token_dec, 2048), device=device, dtype=dtype)
+        cache_position = torch.arange(0, token_dec, device=device, dtype=torch.int32)
+        data = [None, attention_mask, position_ids, None, input_embeds, None, None, False, True, True, cache_position, 0]
     elif case == "GEN":
         # TODO: 계속 self.attn에서 누적되는거 수정필요
         attention_mask = torch.ones((1, token_dec + 1), device=device, dtype=torch.bool)
@@ -70,10 +76,11 @@ def dataGenerator(case, batch_size=1, n_page=1, token_enc=10032, token_dec = 256
     return data
 
 @torch.no_grad()
-def flops(model, batch_size = 1, n_page = 1, drop_rate=0.0, case=None, round_num=1, eval=True, max_depth = 1, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
+def flops(model, batch_size = 1, n_page = 1, drop_rate=0.0, case=None, ret=False, round_num=1, eval=True, max_depth = 1, dtype=torch.bfloat16, verbose=False, shape=None, device="cuda"):
     if eval: model.eval()
 
-    token_enc, token_dec = n_page * 10032, int(n_page * 2508 * (1 - drop_rate)) + 73
+    token_enc, token_dec = [n_page * 10032, int(n_page * 2508 * (1 - drop_rate)) + 73] if not ret \
+                            else [1024, int(1024 * (1 - drop_rate) + 6)]
     inputs = dataGenerator(case, batch_size=batch_size, token_enc=token_enc, token_dec = token_dec, layer_len = 28, shape=shape, device=device, dtype = dtype)
 
     with torch.cuda.amp.autocast(enabled=True, dtype=dtype):

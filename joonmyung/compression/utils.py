@@ -4,9 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 import torch
 
-import torch
-import torch.nn.functional as F
-
 def getDivPrune(feat, r_type, r_prune, i_start=None, i_end=None):
     if len(feat.shape) == 3:
         feat = feat[0]
@@ -437,9 +434,19 @@ class DiffDropScheduler:
         return flops
 
     def calculate_flops_dec(self, Ds):
-        D, D_kv, D_mlp = Ds
+        D_lora_mlp = 0
+        if len(Ds) == 3:
+            D, D_kv, D_mlp = Ds
+        else:
+            D, D_kv, D_mlp, D_lora_mlp = Ds
+
         flops = 0
         for T in self.Ts[1:-1]: # 28 Layer
+            #            Q/MLP              KV
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
             flops += 3 * (T * D * D_mlp)
+            if D_lora_mlp:
+                flops += 2 * T * D_lora_mlp * (D + D) + 2 * T * D_lora_mlp * (D + D_kv)
+                flops += 3 * (T * D_lora_mlp * (D + D_mlp))
+                # 1030 * (2048 * 16384 + 2048 * 32 + 32 * 16384) * 3
         return flops
