@@ -399,8 +399,8 @@ class DiffDropScheduler:
             self.Ts_full.append(self.Ts)
         self.Ts = []
 
-    def calculate_flops(self):
-        flops = self.calculate_flops_enc() if self.enc else self.calculate_flops_dec()
+    def calculate_flops(self, Ds):
+        flops = self.calculate_flops_enc(Ds) if self.enc else self.calculate_flops_dec(Ds)
         return flops / 1e+9
 
     def add_token(self, T):
@@ -422,8 +422,8 @@ class DiffDropScheduler:
                     return thr_prune
         return 0
 
-    def calculate_flops_enc(self):
-        D_in, D, D_out = 1176, 1280, 3584
+    def calculate_flops_enc(self, Ds):
+        D_in, D, D_out = Ds
         flops = 0
         for idx, T in enumerate(self.Ts): #
             if idx == 0: # PATCH_EMBED
@@ -436,8 +436,8 @@ class DiffDropScheduler:
 
         return flops
 
-    def calculate_flops_dec(self):
-        D, D_kv, D_mlp = 3584, 512, 18944
+    def calculate_flops_dec(self, Ds):
+        D, D_kv, D_mlp = Ds
         flops = 0
         for T in self.Ts[1:-1]: # 28 Layer
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
