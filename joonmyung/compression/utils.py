@@ -245,7 +245,7 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             info["efficiency"].setDifficulty(info_comp, layer_idx, [0, feat, info_temp["lm_head"], info_temp["norm"]])
 
 
-def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cuda"):
+def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, device = "cuda"):
     if info["analysis"]["use"]:
         # PART I. INFORMATION
         info["analysis"]["attn"] = []
@@ -276,6 +276,7 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["analysis"]["interpret"] = defaultdict(list)
 
     info["compression"]["img_idx"] = [None, None, None]
+
     if compression is not None:
         info["compression"]["use"] = True
         info["compression"]["info_type"]             = compression[0]
@@ -308,9 +309,10 @@ def resetInfo(info, compression = None, ret=None, need_attn=False, device = "cud
         info["compression"]["difficulty"] = None
 
     info["efficiency"].reset()
-
-    if ret is not None:
-        if ret:
+    if ret != None:
+        info["efficiency"].retrieval = ret
+    if enc == True:
+        if ret and enc:
             white = torch.load(f"./temp/white_ret_pix.pt", weights_only=True)
         else:
             white = torch.load(f"./temp/white_qa_pix.pt", weights_only=True)
@@ -343,6 +345,7 @@ class DiffDropScheduler:
         self.enc = enc
         self.diff_type_input = [[1,3,5,7,9,11,13], [2,4,6,8,10,12,14], [15, 16, 17, 18]]
         self.device = None
+        self.retrieval = False
 
     def setDifficulty(self, info_comp, layer_idx, data):
         if self.activate and layer_idx >= self.start_layer:
@@ -397,7 +400,10 @@ class DiffDropScheduler:
         self.Ts = []
 
     def calculate_flops(self, Ds):
-        flops = self.calculate_flops_enc(Ds) if self.enc else self.calculate_flops_dec(Ds)
+        if self.retrieval:
+            flops = self.calculate_flops_enc_ret(Ds) if self.enc else self.calculate_flops_dec_ret(Ds)
+        else:
+            flops = self.calculate_flops_enc(Ds) if self.enc else self.calculate_flops_dec(Ds)
         return flops / 1e+9
 
     def add_token(self, T):
@@ -419,34 +425,65 @@ class DiffDropScheduler:
                     return thr_prune
         return 0
 
+    def calculate_flops_enc_ret(self, Ds):
+        D_in, D, D_mlp = Ds
+        flops = 0
+
+        # 1. PATCH EMBED
+        flops += self.Ts[0] * D_in * D
+
+        # 2. Layer
+        for idx, T in enumerate(self.Ts[1:-1]):
+            flops += 4 * T * D * D + 2 * T * T * D
+            flops += 2 * T * D * D_mlp
+
+        return flops
+
     def calculate_flops_enc(self, Ds):
         D_in, D, D_out = Ds
         flops = 0
-        for idx, T in enumerate(self.Ts): #
-            if idx == 0: # PATCH_EMBED
-                flops += T * D_in * D
-            elif idx == len(self.Ts) - 1: # 1개 : MERGER
-                flops += 4 * T * D * D + T * D * D_out
-            else: # 32개
-                flops += 4 * T * D * D + 2 * T * T * D
-                flops += 8 * T * D * D
+
+        # 1. PATCH EMBED
+        flops += self.Ts[0] * D_in * D
+
+        # 2. Layer
+        for idx, T in enumerate(self.Ts[1:-1]):
+            flops += 4 * T * D * D + 2 * T * T * D
+            flops += 8 * T * D * D
+
+        # 3. MERGER / QA
+        flops += 4 * self.Ts[-1] * (D * D + D * D_out)
+
+        return flops
+
+    def calculate_flops_dec_ret(self, Ds):
+        D, D_kv, D_mlp, D_lora = Ds
+
+        flops = 0
+        # 1. LAYER
+        for T in self.Ts[1:-1]: # 28 Layer
+            # SA : Q_proj
+            flops += T * D * D + 2 * T * D_lora * D
+            # SA : KV_proj
+            flops += 2 * T * (D * D_kv + D * D_lora + D_lora * D_kv)
+            # SA : proj
+            flops += T * D * D + 2 * T * D_lora * D
+            # SA : ATTN
+            flops += T * T * D
+
+            # MLP
+            flops += 3 * T * (D * D_mlp + D * D_lora + D_lora * D_mlp)
 
         return flops
 
     def calculate_flops_dec(self, Ds):
-        D_lora_mlp = 0
-        if len(Ds) == 3:
-            D, D_kv, D_mlp = Ds
-        else:
-            D, D_kv, D_mlp, D_lora_mlp = Ds
+        D, D_kv, D_mlp = Ds
 
         flops = 0
+        # 1. LAYER
         for T in self.Ts[1:-1]: # 28 Layer
-            #            Q/MLP              KV
             flops += 2 * T * D * D + 2 * T * D * D_kv + 2 * T * T * D
             flops += 3 * (T * D * D_mlp)
-            if D_lora_mlp:
-                flops += 2 * T * D_lora_mlp * (D + D) + 2 * T * D_lora_mlp * (D + D_kv)
-                flops += 3 * (T * D_lora_mlp * (D + D_mlp))
-                # 1030 * (2048 * 16384 + 2048 * 32 + 32 * 16384) * 3
+
+
         return flops
