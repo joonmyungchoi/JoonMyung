@@ -53,6 +53,7 @@ def getImpFastV(attn, start=None, end=None):
     return importance
 def getRepShift(feat, feat_prev, start = None, end = None):
     return torch.norm(feat - feat_prev, p=2, dim=-1)[:, start:end]
+
 def getL2Norm(feat, start = None, end = None):
     return torch.norm(feat, p=2, dim=-1)[:, start:end]
 
