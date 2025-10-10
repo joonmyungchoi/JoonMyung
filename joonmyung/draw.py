@@ -334,7 +334,7 @@ def data2PIL(datas, RGB = True):
 
 def drawImgPlot(datas, col=1, title:str=None, columns=None,
                 output_dir='./', save_name=None, show=True,
-                RGB = True,
+                RGB = True, grid=None,
                 vis_x = False, vis_y = False, border=False):
     # datas : (B, C, H, W) or (B, H, W)
     if type(datas[0]) != PIL.Image.Image and len(datas.shape) == 3:
@@ -358,10 +358,17 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
             ax.set_axis_off()
         if columns:
             ax.set_title(columns[c_num] + str(r_num)) if len(columns) == col else ax.set_title(columns[i])
-        if not vis_x: ax.xaxis.set_visible(False)
-        if not vis_y: ax.yaxis.set_visible(False)
-    # plt.tight_layout()
 
+        if grid:
+            H, W = np.array(data).shape[:2]
+            ax.set_xticks(np.linspace(0, W, grid[0]+1))
+            ax.set_yticks(np.linspace(0, H, grid[1]+1))
+            ax.grid(color='red', linestyle='--', linewidth=0.5)
+        else:
+            if not vis_x: ax.xaxis.set_visible(False)
+            if not vis_y: ax.yaxis.set_visible(False)
+
+    # plt.tight_layout()
     if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -393,11 +400,11 @@ def overlay(imgs, attnsL, dataset=None):
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0)
     attnsL = attnsL.reshape(-1, B, *attnsL.shape[-2:]) # L, B, H, W
-
+    attnsL = normalization(attnsL, type=0)
     results = []
     for attns in attnsL:
         for img, attn in zip(imgs, attns):
-            result = overlay_mask(to_pil_image(img), to_pil_image(normalization(attn, type=0), mode='F')) # (3, 224, 224), (1, 14, 14)
+            result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F')) # (3, 224, 224), (1, 14, 14)
             # plt.imshow(overlay_mask(to_pil_image(dataset.unNormalize(samples)[0]), to_pil_image(normalization(a[:, 0]), mode='F'), alpha=0.5))
             results.append(result)
     return results # (L * B) * overlay

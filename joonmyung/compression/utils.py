@@ -246,8 +246,8 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             info["efficiency"].setDifficulty(info_comp, layer_idx, [0, feat, info_temp["lm_head"], info_temp["norm"]])
 
 
-def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, device = "cuda"):
-    if info["analysis"]["use"]:
+def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, ana = True, device = "cuda"):
+    if info["analysis"]["use"] and ana:
         # PART I. INFORMATION
         info["analysis"]["attn_ratio_type"]  = []
         info["analysis"]["attn_ratio_text"]  = []
