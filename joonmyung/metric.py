@@ -69,8 +69,7 @@ def dataGenerator(case, batch_size=1, n_page=1, token_enc=10032, token_dec = 256
         cache_position = torch.tensor([token_dec], device=device, dtype=torch.int64)
         data = [None, attention_mask, position_ids, past_key_values, inputs_embeds, True, False, False, True, cache_position]
     else:
-        pixel_values = torch.rand(shape, device=device, dtype=dtype) \
-                if shape != None else torch.rand((batch_size, 3, 336, 336), device=device, dtype=dtype)
+        pixel_values = torch.rand(shape, device=device, dtype=dtype)
         data = [pixel_values]
 
     return data
