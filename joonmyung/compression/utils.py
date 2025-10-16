@@ -80,7 +80,7 @@ def splitAttn(attn, start, end): # START | PROMPT | VIS | TEXT | LAST
 def getAttnRatio(attn, start=None, end=None, cls=False, enc=False):
     attn_headavg = attn.mean(dim=1) # (1(B), 2551(T), 2551(T))
     N = attn.shape[2]
-    if not enc and N != 1: # DECODER
+    if not enc and N != 1 and end: # DECODER
         prt      = splitAttn(attn_headavg[:, :start],        start = start, end = end)
         vis      = splitAttn(attn_headavg[:, start:end],     start = start, end = end)
         txt      = splitAttn(attn_headavg[:, end:],          start = start, end = end)
@@ -88,6 +88,9 @@ def getAttnRatio(attn, start=None, end=None, cls=False, enc=False):
         result_full = torch.stack([prt, vis, txt, txt_e], dim=1)
         results_text = attn_headavg[:, end:, end:].sum(dim=1) / torch.arange(N - end, 0, -1, device=attn.device)
         return result_full, results_text
+    if not enc and N != 1:  # DECODER : ONLY TEXT
+        results_text = attn_headavg.sum(dim=1)
+        return None, results_text
     elif cls: # ENCODER & CLS
         patch2cls_ratio   = attn_headavg[:, 1:, 1:].mean(dim=-2).sum(dim=-1)
         patch2patch_ratio = attn_headavg[:,  0, 1:].sum(dim=-1)
@@ -177,24 +180,22 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
         if attn is not None and attn.shape[2] != 1: # (B, H, T, T)
             attn = attn.to(torch.float32)
             info_ana["base"].append(unPrune(getImpBase(attn, i_start, i_end, cls=cls), source_vis))
-
-            if i_start != None and i_end != None: # DECODER
-                info_ana["attn"].append(attn.mean(dim=(0, 1))[-1])
+            if enc: # ENCODER
+                info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
+            else: # DECODER
+                info_ana["attn"].append(attn.mean(dim=(0, 1)))
                 ratio_type, ratio_text = getAttnRatio(attn, start=i_start, end=i_end, cls=cls, enc=enc)
                 info_ana["attn_ratio_type"].append(ratio_type)
                 info_ana["attn_ratio_text"].append(ratio_text)
+                if i_start:
+                    attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].sum(dim=-1)])
+                    attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].mean(dim=-1)])
+                    info_ana["eos_attn_alloc"].append(attn_alloc_full)
+                    info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
 
+                    info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
+                    info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
 
-                attn_alloc_full = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].sum(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].sum(dim=-1)])
-                attn_alloc_token = torch.stack([attn.mean(dim=(0, 1))[-1][:i_start].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_start:i_end].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_end:i_len - 1].mean(dim=-1), attn.mean(dim=(0, 1))[-1][i_len - 1:].mean(dim=-1)])
-                info_ana["eos_attn_alloc"].append(attn_alloc_full)
-                info_ana["eos_attn_effi"].append(attn_alloc_token / attn_alloc_token[1])
-
-                info_ana["fastV"].append(getImpFastV(attn, i_start, i_end))
-                info_ana["fitPrune"].append(getImpFitprune(attn, i_start, i_end))
-
-            else: # ENCODER
-                info_ana["vidTLDR"].append(unPrune(getImpVidTLDR(attn, i_start, i_end), source_vis))
 
         if feat is not None and feat.shape[1] != 1:
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
@@ -204,7 +205,7 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
             # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
             info_ana["img_complexity"].append(complexity)
-            if i_start != None: # DECODER : Entropy / Logit / PRED
+            if not enc: # DECODER : Entropy / Logit / PRED
                 logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
