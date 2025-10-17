@@ -45,9 +45,10 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
     return values # LBF
 
 def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K = None, use_threshold = None, mask = None,
-                   col = 1, save_name=None, save = 1, border = False,  # COMMON
+                   col = 1, save_name=None, save = 1, border = False, # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
                    show= True, deactivate=False,
+                   integ = False, # overlay
                    **kwargs):
     if deactivate:
         return
@@ -59,7 +60,7 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None and vis_overlay: # 이미지 겹치기
-            data = mask_to_image(img, mask) if mask is not None else overlay(img, data)
+            data = mask_to_image(img, mask) if mask is not None else overlay(img, data, integ=integ)
 
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
@@ -388,7 +389,7 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 
 
-def overlay(imgs, attnsL, dataset=None):
+def overlay(imgs, attnsL, integ=False, dataset=None):
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))
     if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0)  # B, C, H, W
@@ -400,12 +401,12 @@ def overlay(imgs, attnsL, dataset=None):
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0)
     attnsL = attnsL.reshape(-1, B, *attnsL.shape[-2:]) # L, B, H, W
-    attnsL = normalization(attnsL, type=0)
+    if integ: attnsL = normalization(attnsL, type=0)
     results = []
     for attns in attnsL:
         for img, attn in zip(imgs, attns):
+            if not integ: attn = normalization(attn, type=0)
             result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F')) # (3, 224, 224), (1, 14, 14)
-            # plt.imshow(overlay_mask(to_pil_image(dataset.unNormalize(samples)[0]), to_pil_image(normalization(a[:, 0]), mode='F'), alpha=0.5))
             results.append(result)
     return results # (L * B) * overlay
 
