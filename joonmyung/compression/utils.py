@@ -247,7 +247,7 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             info["efficiency"].setDifficulty(info_comp, layer_idx, [0, feat, info_temp["lm_head"], info_temp["norm"]])
 
 
-def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, ana = True, device = "cuda"):
+def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_attn=False, ana = True, device = "cuda"):
     if info["analysis"]["use"] and ana:
         # PART I. INFORMATION
         info["analysis"]["attn_ratio_type"]  = []
@@ -279,23 +279,33 @@ def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, ana
         info["analysis"]["img_complexity"] = []
         info["analysis"]["interpret"] = defaultdict(list)
 
+
+
+    if info_ret is not None:
+        info["retrieval"]["use"] = True
+        info["retrieval"]["ret_type"]  = info_ret[0]
+        info["retrieval"]["token_idx"] = info_ret[1]
+        info["retrieval"]["layer_idx"] = info_ret[2]
+
+    if info["retrieval"]["use"]:
+        info["retrieval"]["importance"] = []
+
     info["compression"]["img_idx"] = [None, None, None]
-
-    if compression is not None:
+    if info_comp is not None:
         info["compression"]["use"] = True
-        info["compression"]["info_type"]             = compression[0]
-        info["compression"]["r_type"]                = compression[1]
-        info["compression"]["prune_layer"]           = compression[2]
-        info["compression"]["prune_r"]               = compression[3]
-        info["compression"]["prePrune_layer"]        = compression[4]
-        info["compression"]["prePrune_r"]            = compression[5]
-        info["compression"]["diffPrune_type"]        = compression[6]
-        info["compression"]["diffPrune_start"]       = compression[7]
-        info["compression"]["diffPrune_drop_ratio"]  = compression[8]
-        info["compression"]["diffPrune_drop_thr"]    = compression[9]
-        info["compression"]["preAttn"]               = compression[10]
+        info["compression"]["info_type"]             = info_comp[0]
+        info["compression"]["r_type"]                = info_comp[1]
+        info["compression"]["prune_layer"]           = info_comp[2]
+        info["compression"]["prune_r"]               = info_comp[3]
+        info["compression"]["prePrune_layer"]        = info_comp[4]
+        info["compression"]["prePrune_r"]            = info_comp[5]
+        info["compression"]["diffPrune_type"]        = info_comp[6]
+        info["compression"]["diffPrune_start"]       = info_comp[7]
+        info["compression"]["diffPrune_drop_ratio"]  = info_comp[8]
+        info["compression"]["diffPrune_drop_thr"]    = info_comp[9]
+        info["compression"]["preAttn"]               = info_comp[10]
 
-        info["efficiency"].register_diffPruning(compression[1], compression[6], compression[7], compression[8], compression[9], device)
+        info["efficiency"].register_diffPruning(info_comp[1], info_comp[6], info_comp[7], info_comp[8], info_comp[9], device)
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
@@ -321,6 +331,7 @@ def resetInfo(info, compression = None, ret=None, enc=None, need_attn=False, ana
         else:
             white = torch.load(f"./temp/white_qa_pix.pt", weights_only=True)
         info["temp"]["white"] = white
+
 
 
 def grouping(x, group_num):
