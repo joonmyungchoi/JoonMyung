@@ -200,10 +200,10 @@ def pruning(
             position_embeddings = tuple([v.masked_select(mask_block.reshape(1, 1, -1, 1)).reshape(3, 1, -1, 128) for v in position_embeddings])
             others = [attention_mask, position_ids, cache_position, position_embeddings]
 
-    if source is not None:
-        restored_mask = torch.zeros_like(source, device=source.device)
-        restored_mask[source] = mask_block
-        source = restored_mask
+    # if source is not None:
+    #     restored_mask = torch.zeros_like(source, device=source.device)
+    #     restored_mask[source] = mask_block
+    #     source = restored_mask
 
 
     x = x_unprune

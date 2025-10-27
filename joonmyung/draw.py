@@ -18,7 +18,7 @@ import random
 import torch
 import copy
 import cv2
-import PIL
+from torchvision import transforms
 import os
 
 def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = False, quantile = 0, descending = False, HW = None, dtype=torch.float32, BL=False, cls=False):
@@ -85,6 +85,9 @@ def generate_mask(data, topK=10, use_threshold = False, F = 1):
     return mask, data.view(shape) * mask
 
 def mask_to_image(image, mask):
+    if type(image) == Image.Image:
+        to_tensor = transforms.ToTensor()
+        image = to_tensor(image)[None].to(device=mask.device)
     Fr, C, H, W = image.shape # (1, 3, 448, 448)
     if len(mask.shape) == 3:
         mask = mask.reshape(-1, Fr, *mask.shape[-2:])
@@ -326,7 +329,7 @@ def data2PIL(datas, RGB = True):
     elif type(datas) == np.ndarray:
         datas = cv2.cvtColor(datas, cv2.COLOR_BGR2RGB) if datas.max() <= 1 else datas
         pils = datas.transpose(1, 2, 0) if RGB else datas # (H, W, C)
-    elif type(datas) == PIL.Image.Image:
+    elif type(datas) == Image.Image:
         pils = datas
     else:
         raise ValueError
@@ -338,7 +341,7 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
                 RGB = True, grid=None,
                 vis_x = False, vis_y = False, border=False):
     # datas : (B, C, H, W) or (B, H, W)
-    if type(datas[0]) != PIL.Image.Image and len(datas.shape) == 3:
+    if type(datas[0]) != Image.Image and len(datas.shape) == 3:
         datas = datas[:, None]
 
     row = (len(datas) - 1) // col + 1
@@ -390,6 +393,12 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 
 def overlay(imgs, attnsL, integ=False, dataset=None):
+    if type(imgs) == Image.Image:
+        to_tensor = transforms.ToTensor()
+        imgs = to_tensor(imgs)[None].to(device=attnsL.device)
+
+        # imgs = torch.from_numpy(np.array(imgs)).permute(2, 0, 1)[None].to("cuda") / 255
+
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))
     if len(imgs.shape) == 3: imgs = imgs.unsqueeze(0)  # B, C, H, W
