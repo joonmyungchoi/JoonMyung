@@ -290,6 +290,7 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
     if info["retrieval"]["use"]:
         info["retrieval"]["importance"] = []
 
+
     info["compression"]["img_idx"] = [None, None, None]
     if info_comp is not None:
         info["compression"]["use"] = True
@@ -297,15 +298,23 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["r_type"]                = info_comp[1]
         info["compression"]["prune_layer"]           = info_comp[2]
         info["compression"]["prune_r"]               = info_comp[3]
-        info["compression"]["prePrune_layer"]        = info_comp[4]
-        info["compression"]["prePrune_r"]            = info_comp[5]
-        info["compression"]["diffPrune_type"]        = info_comp[6]
-        info["compression"]["diffPrune_start"]       = info_comp[7]
-        info["compression"]["diffPrune_drop_ratio"]  = info_comp[8]
-        info["compression"]["diffPrune_drop_thr"]    = info_comp[9]
-        info["compression"]["preAttn"]               = info_comp[10]
+        info["compression"]["diffPrune_type"]        = info_comp[4]
+        info["compression"]["diffPrune_start"]       = info_comp[5]
+        info["compression"]["diffPrune_drop_ratio"]  = info_comp[6]
+        info["compression"]["diffPrune_drop_thr"]    = info_comp[7]
 
-        info["efficiency"].register_diffPruning(info_comp[1], info_comp[6], info_comp[7], info_comp[8], info_comp[9], device)
+        info["compression"]["preAttn"]               = info_comp[8]
+
+        info["compression"]["prePrune_layer"]        = info_comp[9]  # 픽셀 / ret sim 제거 레이어
+        info["compression"]["prePrune_ratio"]        = info_comp[10]  # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
+        info["compression"]["prePrune_ret_r"]        = info_comp[11] # 유사도 ↓ 제거 : 제거 토큰 비율
+        info["compression"]["prePrune_ret_thr"]      = info_comp[12] # 유사도 ↓ 제거 : 제거 토큰 Threshold
+        info["compression"]["prePrune_ret_kernel"]   = info_comp[13] # 유사도 ↓ 제거 : 커널 사이즈
+        info["compression"]["prePrune_ret_str"]      = info_comp[14] # 유사도 ↓ 제거 : 커널 강도
+        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.3,0,[15,15],2.0]
+        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.2,0,[15,15],2.0]
+        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.1,0,[15,15],2.0]
+        info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
@@ -321,6 +330,7 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["size"] = None
         info["compression"]["source"] = None
         info["compression"]["difficulty"] = None
+        # info["compression"]["mask_block"] = True
 
     info["efficiency"].reset()
     if ret != None:
@@ -354,13 +364,16 @@ class DiffDropScheduler:
         self.drop_ratio_avg = None # 레이버 별 드랍 토큰 갯수 (평균)
         self.benchmark = False
         self.activate = False
-        self.Ts = []
-        self.Ts_full = []
+        self.T = 0    # 입력 토큰 갯수
+        self.Ts = []  # 레이어 별 샘플 갯수
+        self.Ts_full = [] # 전체 데이터 셋 레이어 별 샘플 갯수
         self.difficulty = []
         self.enc = enc
         self.diff_type_input = [[1,3,5,7,9,11,13], [2,4,6,8,10,12,14], [15, 16, 17, 18]]
         self.device = None
         self.retrieval = False
+
+
 
     def setDifficulty(self, info_comp, layer_idx, data):
         if self.activate and layer_idx >= self.start_layer:
@@ -420,6 +433,9 @@ class DiffDropScheduler:
         else:
             flops = self.calculate_flops_enc(Ds) if self.enc else self.calculate_flops_dec(Ds)
         return flops / 1e+9
+
+    def register_T(self, T):
+        self.T = T
 
     def add_token(self, T):
         self.Ts.append(T)
