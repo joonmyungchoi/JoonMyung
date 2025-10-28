@@ -78,15 +78,11 @@ def _delta_kernel2d(ky: int, kx: int, dtype=torch.float32, device=None) -> torch
 
 def smooth_kenel(
     heatmap: torch.Tensor,         # (B, H, W)
-    kernel_size: list = [9, 9],        # 홀수
+    kernel_size: list = [9, 9],    # 홀수
     strength: float = 0.7,         # 0이면 원본, ↑할수록 가우시안 쪽으로
+    norm: int = 0,
     pad_mode: str = "reflect",     # 'reflect' | 'replicate' | 'constant'
 ) -> torch.Tensor:
-    """
-    두 파라미터만: (kernel_size, strength)
-    - 합(총량) 보존: K = (1-s)*Delta + s*Gaussian  (항상 커널 합=1)
-    - kernel_size는 '퍼질 범위', strength는 '퍼짐 강도'
-    """
     dtype, device = heatmap.dtype, heatmap.device
     kernel_size_y, kernel_size_x = kernel_size
     # 커널들 생성
@@ -104,5 +100,6 @@ def smooth_kenel(
     x = F.pad(x, (px, px, py, py), mode=pad_mode)
     y = F.conv2d(x, K)        # (B,1,H,W)
 
-    y = (y - y.min()) / (y.max() - y.min())
+    if norm:
+        y = (y - y.min()) / (y.max() - y.min())
     return y.squeeze(1)

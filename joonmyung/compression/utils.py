@@ -305,12 +305,13 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
 
         info["compression"]["preAttn"]               = info_comp[8]
 
-        info["compression"]["prePrune_layer"]        = info_comp[9]  # 픽셀 / ret sim 제거 레이어
-        info["compression"]["prePrune_ratio"]        = info_comp[10]  # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
+        info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
+        info["compression"]["prePrune_ratio"]        = info_comp[10] # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
         info["compression"]["prePrune_ret_r"]        = info_comp[11] # 유사도 ↓ 제거 : 제거 토큰 비율
         info["compression"]["prePrune_ret_thr"]      = info_comp[12] # 유사도 ↓ 제거 : 제거 토큰 Threshold
         info["compression"]["prePrune_ret_kernel"]   = info_comp[13] # 유사도 ↓ 제거 : 커널 사이즈
         info["compression"]["prePrune_ret_str"]      = info_comp[14] # 유사도 ↓ 제거 : 커널 강도
+        info["compression"]["prePrune_ret_norm"]     = info_comp[15] # 유사도 ↓ 제거 : 정규화
         # [0,0,0,0,0,0,0,0,0,-1,1.0,0.3,0,[15,15],2.0]
         # [0,0,0,0,0,0,0,0,0,-1,1.0,0.2,0,[15,15],2.0]
         # [0,0,0,0,0,0,0,0,0,-1,1.0,0.1,0,[15,15],2.0]
