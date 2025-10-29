@@ -303,20 +303,18 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["diffPrune_start"]       = info_comp[5]
         info["compression"]["diffPrune_drop_ratio"]  = info_comp[6]
         info["compression"]["diffPrune_drop_thr"]    = info_comp[7]
+        info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
 
         info["compression"]["preAttn"]               = info_comp[8]
+        if info_comp[10] or info_comp[11] or info_comp[12]:
+            info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
+            info["compression"]["prePrune_ratio"]        = info_comp[10] # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
+            info["compression"]["prePrune_ret_r"]        = info_comp[11] # 유사도 ↓ 제거 : 제거 토큰 비율
+            info["compression"]["prePrune_ret_thr"]      = info_comp[12] # 유사도 ↓ 제거 : 제거 토큰 Threshold
+            info["compression"]["prePrune_ret_kernel"]   = info_comp[13] # 유사도 ↓ 제거 : 커널 사이즈
+            info["compression"]["prePrune_ret_str"]      = info_comp[14] # 유사도 ↓ 제거 : 커널 강도
+            info["compression"]["prePrune_ret_norm"]     = info_comp[15] # 유사도 ↓ 제거 : 정규화
 
-        info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
-        info["compression"]["prePrune_ratio"]        = info_comp[10] # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
-        info["compression"]["prePrune_ret_r"]        = info_comp[11] # 유사도 ↓ 제거 : 제거 토큰 비율
-        info["compression"]["prePrune_ret_thr"]      = info_comp[12] # 유사도 ↓ 제거 : 제거 토큰 Threshold
-        info["compression"]["prePrune_ret_kernel"]   = info_comp[13] # 유사도 ↓ 제거 : 커널 사이즈
-        info["compression"]["prePrune_ret_str"]      = info_comp[14] # 유사도 ↓ 제거 : 커널 강도
-        info["compression"]["prePrune_ret_norm"]     = info_comp[15] # 유사도 ↓ 제거 : 정규화
-        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.3,0,[15,15],2.0]
-        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.2,0,[15,15],2.0]
-        # [0,0,0,0,0,0,0,0,0,-1,1.0,0.1,0,[15,15],2.0]
-        info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
@@ -475,17 +473,20 @@ class DiffDropScheduler:
     def calculate_flops_enc(self, Ds):
         D_in, D, D_out = Ds
         flops = 0
+        BTs = torch.stack([torch.Tensor(v) for v in self.Ts], dim=-1)
+        BTs = BTs[1:] - BTs[:-1]
 
         # 1. PATCH EMBED
-        flops += self.Ts[0] * D_in * D
+        for Ts in BTs:
+            flops += Ts[0] * D_in * D
 
-        # 2. Layer
-        for idx, T in enumerate(self.Ts[1:-1]):
-            flops += 4 * T * D * D + 2 * T * T * D
-            flops += 8 * T * D * D
+            # 2. Layer
+            for idx, T in enumerate(Ts[1:-1]):
+                flops += 4 * T * D * D + 2 * T * T * D
+                flops += 8 * T * D * D
 
-        # 3. MERGER / QA
-        flops += 4 * self.Ts[-1] * (D * D + D * D_out)
+            # 3. MERGER / QA
+            flops += 4 * Ts[-1] * (D * D + D * D_out)
 
         return flops
 
