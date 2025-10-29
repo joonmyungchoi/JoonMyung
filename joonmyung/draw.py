@@ -394,10 +394,8 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 def overlay(imgs, attnsL, integ=False, dataset=None):
     if type(imgs) == Image.Image:
-        to_tensor = transforms.ToTensor()
-        imgs = to_tensor(imgs)[None].to(device=attnsL.device)
-
-        # imgs = torch.from_numpy(np.array(imgs)).permute(2, 0, 1)[None].to("cuda") / 255
+        toTensor = transforms.ToTensor()
+        imgs = toTensor(imgs)[None].to(device=attnsL.device)
 
     attnsL = to_leaf(to_tensor(attnsL))
     imgs   = to_leaf(to_tensor(imgs))

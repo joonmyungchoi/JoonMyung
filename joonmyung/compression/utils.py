@@ -198,8 +198,9 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
 
 
         if feat is not None and feat.shape[1] != 1:
+            feat = feat.detach()
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
-            info_ana["shift"].append(unPrune(getRepShift(feat_mlp, feat_input, i_start, i_end), source_vis))
+            if feat_mlp is not None: info_ana["shift"].append(unPrune(getRepShift(feat_mlp, feat_input, i_start, i_end), source_vis))
             info_ana["feat"].append(feat)
             feat_norm = F.normalize(feat.to(torch.float32), dim=-1)  # ↑ : 단순
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
