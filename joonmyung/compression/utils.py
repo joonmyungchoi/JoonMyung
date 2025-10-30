@@ -201,7 +201,7 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             feat = feat.detach()
             info_ana["norm2"].append(unPrune(getL2Norm(feat, i_start, i_end), source_vis))
             if feat_mlp is not None: info_ana["shift"].append(unPrune(getRepShift(feat_mlp, feat_input, i_start, i_end), source_vis))
-            info_ana["feat"].append(feat)
+            # info_ana["feat"].append(feat)
             feat_norm = F.normalize(feat.to(torch.float32), dim=-1)  # ↑ : 단순
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
             # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
@@ -401,7 +401,14 @@ class DiffDropScheduler:
     def benchmark_mode(self):
         self.reset()
         self.benchmark = True
-        Ts = np.array(self.Ts_full).mean(axis=0, dtype=int)
+        Ts_full = np.array(self.Ts_full)
+        if len(Ts_full.shape) == 3:
+            Ts_full = Ts_full[:, :, 1:] - Ts_full[:, :, :-1]
+            Ts = Ts_full.mean(axis=(0, 2), dtype=int)
+        else:
+            Ts = Ts_full.mean(axis=0, dtype=int)
+
+
         self.drop_ratio_avg = Ts[:-1] - Ts[1:]
 
     def register_diffPruning(self, r_type, diff_type, start_layer, diff_drop_thr, diff_drop_ratio, device):
@@ -474,7 +481,7 @@ class DiffDropScheduler:
         D_in, D, D_out = Ds
         flops = 0
         BTs = torch.stack([torch.Tensor(v) for v in self.Ts], dim=-1)
-        BTs = BTs[1:] - BTs[:-1]
+        BTs = (BTs[1:] - BTs[:-1]).tolist()
 
         # 1. PATCH EMBED
         for Ts in BTs:

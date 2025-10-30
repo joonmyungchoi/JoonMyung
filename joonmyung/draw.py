@@ -341,7 +341,7 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
                 RGB = True, grid=None,
                 vis_x = False, vis_y = False, border=False):
     # datas : (B, C, H, W) or (B, H, W)
-    if type(datas[0]) != Image.Image and len(datas.shape) == 3:
+    if type(datas) == torch.Tensor and len(datas.shape) == 3:
         datas = datas[:, None]
 
     row = (len(datas) - 1) // col + 1
