@@ -76,11 +76,11 @@ def _delta_kernel2d(ky: int, kx: int, dtype=torch.float32, device=None) -> torch
     k[ky // 2, kx // 2] = 1.0
     return k
 
-def smooth_kenel(
+def smooth_kernel(
     heatmap: torch.Tensor,         # (B, H, W)
     kernel_size: list = [9, 9],    # 홀수
-    strength: float = 0.7,         # 0이면 원본, ↑할수록 가우시안 쪽으로
-    norm: int = 0,
+    s: float = 0.0,                # 0이면 원본, ↓할수록 가우시안 쪽으로
+    norm: int = 1.0,
     pad_mode: str = "reflect",     # 'reflect' | 'replicate' | 'constant'
 ) -> torch.Tensor:
     dtype, device = heatmap.dtype, heatmap.device
@@ -90,7 +90,6 @@ def smooth_kenel(
     D = _delta_kernel2d(kernel_size_y, kernel_size_x, dtype=dtype, device=device)
 
     # 강도 s: 0이면 원본, 1이면 순수 가우시안. 1을 넘겨도 동작하도록 1-포화 매핑.
-    s = 1.0 - torch.exp(torch.tensor([-max(strength, 0.0)], dtype=dtype, device=device))[0]  # 0~1로 매끈 포화
     K = (1.0 - s) * D + s * G  # 합=1 유지
 
     py, px = kernel_size_y // 2, kernel_size_x // 2

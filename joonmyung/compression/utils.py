@@ -293,6 +293,7 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
 
 
     info["compression"]["img_idx"] = [None, None, None]
+
     if info_comp is not None:
         info["compression"]["use"] = True
         info["compression"]["info_type"]             = info_comp[0]
@@ -304,7 +305,7 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["diffPrune_drop_ratio"]  = info_comp[6]
         info["compression"]["diffPrune_drop_thr"]    = info_comp[7]
         info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
-
+        # [10, 0, -1, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         info["compression"]["preAttn"]               = info_comp[8]
         if info_comp[10] or info_comp[11] or info_comp[12]:
             info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
