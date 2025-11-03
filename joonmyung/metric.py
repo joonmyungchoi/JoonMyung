@@ -109,7 +109,7 @@ def benchmark(
     model = model.eval().to(device)
     warm_up = int(runs * throw_out)
     # TODO img_start, img_end 정의 필요
-    token_enc, token_dec = n_page * 10032, int((n_page * 2508 + (n_page - 1) * 2) * (1 - drop_rate)) + 73
+    token_enc, token_dec = 10032, int((n_page * 2508 + (n_page - 1) * 2) * (1 - drop_rate)) + 73
     inputs = dataGenerator(case, batch_size=batch_size, n_page=n_page, token_enc=token_enc, token_dec=token_dec, layer_len=28, shape=shape, device=device, dtype=dtype)
 
     total, times, peak_memories = 0, [], []
