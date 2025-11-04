@@ -39,7 +39,7 @@ def get_macs(model, size,
 def dataGenerator(case, batch_size=1, n_page=1, token_enc=10032, token_dec = 2560, layer_len = 28, shape = None, device="cuda", dtype=torch.float32):
     if case == "VISUAL":
         hidden_states = torch.rand((token_enc, 1176), device=device, dtype=dtype)
-        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32).expand(n_page, -1)
+        grid_thw = torch.tensor([[1, 114, 88]], device=device, dtype=torch.int32).expand(1, -1)
         data = [hidden_states, grid_thw]
     elif case == "CACHE":
         attention_mask = torch.ones((1, token_dec), device=device, dtype=torch.bool)
