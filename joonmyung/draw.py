@@ -338,7 +338,7 @@ def data2PIL(datas, RGB = True):
 
 def drawImgPlot(datas, col=1, title:str=None, columns=None,
                 output_dir='./', save_name=None, show=True,
-                RGB = True, grid=None,
+                RGB = True, grid=None, color='green', linewidth=1,
                 vis_x = False, vis_y = False, border=False):
     # datas : (B, C, H, W) or (B, H, W)
     if type(datas) == torch.Tensor and len(datas.shape) == 3:
@@ -365,9 +365,10 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
 
         if grid:
             H, W = np.array(data).shape[:2]
-            ax.set_xticks(np.linspace(0, W, grid[0]+1))
-            ax.set_yticks(np.linspace(0, H, grid[1]+1))
-            ax.grid(color='red', linestyle='--', linewidth=0.5)
+            ax.set_yticks(np.linspace(0, H, grid[0]+1))
+            ax.set_xticks(np.linspace(0, W, grid[1]+1))
+            ax.grid(color=color, linewidth=linewidth)
+            ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         else:
             if not vis_x: ax.xaxis.set_visible(False)
             if not vis_y: ax.yaxis.set_visible(False)
