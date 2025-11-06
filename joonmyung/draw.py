@@ -84,7 +84,7 @@ def generate_mask(data, topK=10, use_threshold = False, F = 1):
     mask = mask.view(shape)
     return mask, data.view(shape) * mask
 
-def mask_to_image(image, mask):
+def mask_to_image(image, mask, opacity=0.3, bg_color = (0.0, 0.0, 0.0)):
     if type(image) == Image.Image:
         to_tensor = transforms.ToTensor()
         image = to_tensor(image)[None].to(device=mask.device)
@@ -94,8 +94,13 @@ def mask_to_image(image, mask):
     L, Fr, M_H, M_W = mask.shape  #
 
     mask_resized = F.interpolate(mask.float(), size=(H, W), mode='nearest').reshape(L, Fr, 1, H, W) # (L, B, 1, H, W)
-    mask_3channel = mask_resized.expand(-1, -1, 3, -1, -1) # (L, B, 3, H, W)
-    masked_image = image[None] * mask_3channel
+    mask_3 = mask_resized.expand(-1, -1, 3, -1, -1) # (L, B, 3, H, W)
+
+    device = image.device
+    color = torch.tensor(bg_color, device=device).view(1, 1, 3, 1, 1)
+    # 5. 합성: mask=1이면 원본, 0이면 색상 * opacity + 원본*(1-opacity)
+    masked_image = image[None] * mask_3 + (image[None] * (1 - opacity) + color * opacity) * (1 - mask_3)
+
 
     return masked_image.reshape(-1, C, H, W)
 
