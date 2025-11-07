@@ -342,7 +342,7 @@ def data2PIL(datas, RGB = True):
     return pils # (H, W, C)
 
 def drawImgPlot(datas, col=1, title:str=None, columns=None,
-                output_dir='./', save_name=None, show=True,
+                output_dir='./', save_name=None, show=True, r=[1,1], dpi=100,
                 RGB = True, grid=None, color='green', linewidth=1,
                 vis_x = False, vis_y = False, border=False):
     # datas : (B, C, H, W) or (B, H, W)
@@ -350,7 +350,10 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
         datas = datas[:, None]
 
     row = (len(datas) - 1) // col + 1
-    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False)
+    fig, axes = plt.subplots(nrows=row, ncols=col, squeeze=False, dpi = dpi,
+                             figsize = (col * r[1], row * r[0]),
+                             gridspec_kw={"wspace": 0.1, 'hspace': 0.1}
+                             )
     fig.set_size_inches(col * 8, row * 8)
     if title: fig.suptitle(title, fontsize=16)
     for i, data in enumerate(datas):
