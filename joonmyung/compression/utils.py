@@ -206,8 +206,8 @@ def getAnalysis(info, attn = None, feat = None, feat_mlp = None, feat_input = No
             complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean(dim=-1)  # ↑ : 복잡
             # complexity = (1 - (feat_norm @ feat_norm.transpose(-1, -2))).mean()  # ↑ : 복잡
             info_ana["img_complexity"].append(complexity)
-            if not enc: # DECODER : Entropy / Logit / PRED
-                logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach()))
+            if not enc: # DECODER s
+                logits = info_temp["lm_head"](info_temp["norm"](feat[:, -1].detach())).to(torch.float32)
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = log_probs.exp()
                 entropy = -(probs * log_probs).sum(dim=-1)
