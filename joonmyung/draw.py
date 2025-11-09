@@ -44,7 +44,7 @@ def sortedMatrix(values, layers = None, sort = False, dim = -1, normalize = Fals
         values = values.reshape(-1, HW[0], HW[1])
     return values # LBF
 
-def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K = None, use_threshold = None, mask = None,
+def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K = None, use_threshold = None, mask = None, colormap= "jet",
                    col = 1, save_name=None, save = 1, border = False, # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
                    show= True, deactivate=False,
@@ -60,7 +60,7 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None and vis_overlay: # 이미지 겹치기
-            data = mask_to_image(img, mask) if mask is not None else overlay(img, data, integ=integ)
+            data = mask_to_image(img, mask) if mask is not None else overlay(img, data, integ=integ, colormap=colormap)
 
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
@@ -385,7 +385,7 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
     if output_dir and save_name:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-        plt.savefig(os.path.join(output_dir, f'{save_name}.png'), transparent = True)
+        plt.savefig(os.path.join(output_dir, f'{save_name}.png'), transparent = True, bbox_inches='tight', pad_inches=0)
     if show:
         plt.show()
 
@@ -401,7 +401,7 @@ def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alp
 
 
 
-def overlay(imgs, attnsL, integ=False, dataset=None):
+def overlay(imgs, attnsL, integ=False, dataset=None, colormap="jet"):
     if type(imgs) == Image.Image:
         toTensor = transforms.ToTensor()
         imgs = toTensor(imgs)[None].to(device=attnsL.device)
@@ -422,7 +422,7 @@ def overlay(imgs, attnsL, integ=False, dataset=None):
     for attns in attnsL:
         for img, attn in zip(imgs, attns):
             if not integ: attn = normalization(attn, type=0)
-            result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F')) # (3, 224, 224), (1, 14, 14)
+            result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F'), colormap=colormap) # (3, 224, 224), (1, 14, 14)
             results.append(result)
     return results # (L * B) * overlay
 
