@@ -305,14 +305,14 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["diffPrune_start"]       = info_comp[5]
         info["compression"]["diffPrune_drop_ratio"]  = info_comp[6]
         info["compression"]["diffPrune_drop_thr"]    = info_comp[7]
-        info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
-        # [10, 0, -1, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         info["compression"]["preAttn"]               = info_comp[8]
+        info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
+        # [3, 1, 0, 0, 18, 0, [60], [0.5], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "colpali-v1.2_dev_0000-10.9000000_X_22_0", 0, 2, 2, 1, 1, 0, 2,  "TABLE_2"],
         if info_comp[12] or info_comp[13] or info_comp[14]:
             info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
-            info["compression"]["prePrune_gray"]        = info_comp[10] # BTP : GrayScale 변환 방식
+            info["compression"]["prePrune_gray"]         = info_comp[10] # BTP : GrayScale 변환 방식
             info["compression"]["prePrune_tau_e"]        = info_comp[11] # BTP : Background Pixel Error
-            info["compression"]["prePrune_tau_bg"]        = info_comp[12] # BTP : Background Patch Threshold
+            info["compression"]["prePrune_tau_bg"]       = info_comp[12] # BTP : Background Patch Threshold
             info["compression"]["prePrune_ret_r"]        = info_comp[13] # CTP : 제거 토큰 비율
             info["compression"]["prePrune_ret_thr"]      = info_comp[14] # CTP : 제거 토큰 Threshold
             info["compression"]["prePrune_ret_kernel"]   = info_comp[15] # CTP : 커널 사이즈
