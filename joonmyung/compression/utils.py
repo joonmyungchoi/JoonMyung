@@ -3,6 +3,7 @@ from collections import defaultdict
 import torch.nn.functional as F
 import numpy as np
 import torch
+import math
 
 def getDivPrune(feat, r_type, r_prune, i_start=None, i_end=None):
     if len(feat.shape) == 3:
@@ -307,15 +308,16 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["efficiency"].register_diffPruning(info_comp[1], info_comp[4], info_comp[5], info_comp[6], info_comp[7], device)
         # [10, 0, -1, 0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         info["compression"]["preAttn"]               = info_comp[8]
-        if info_comp[10] or info_comp[11] or info_comp[12]:
+        if info_comp[12] or info_comp[13] or info_comp[14]:
             info["compression"]["prePrune_layer"]        = info_comp[9]  # 토큰 제거할 레이어 넘버
-            info["compression"]["prePrune_ratio"]        = info_comp[10] # 흰색 배경 제거 : 흰색 픽색 비율 Threshold
-            info["compression"]["prePrune_ret_r"]        = info_comp[11] # 유사도 ↓ 제거 : 제거 토큰 비율
-            info["compression"]["prePrune_ret_thr"]      = info_comp[12] # 유사도 ↓ 제거 : 제거 토큰 Threshold
-            info["compression"]["prePrune_ret_kernel"]   = info_comp[13] # 유사도 ↓ 제거 : 커널 사이즈
-            info["compression"]["prePrune_ret_str"]      = info_comp[14] # 유사도 ↓ 제거 : 커널 강도
-            info["compression"]["prePrune_ret_norm"]     = info_comp[15] # 유사도 ↓ 제거 : 정규화
-
+            info["compression"]["prePrune_gray"]        = info_comp[10] # BTP : GrayScale 변환 방식
+            info["compression"]["prePrune_tau_e"]        = info_comp[11] # BTP : Background Pixel Error
+            info["compression"]["prePrune_tau_bg"]        = info_comp[12] # BTP : Background Patch Threshold
+            info["compression"]["prePrune_ret_r"]        = info_comp[13] # CTP : 제거 토큰 비율
+            info["compression"]["prePrune_ret_thr"]      = info_comp[14] # CTP : 제거 토큰 Threshold
+            info["compression"]["prePrune_ret_kernel"]   = info_comp[15] # CTP : 커널 사이즈
+            info["compression"]["prePrune_ret_str"]      = info_comp[16] # CTP : 커널 강도
+            info["compression"]["prePrune_ret_norm"]     = info_comp[17] # CTP : 정규화
 
         info["compression"]["need_naive"] = [needAttn(info, l) if need_attn == 1 else False for l in range(50)] # SELECTIVE FA
         info["compression"]["need_attn"]  = [needAttn(info, l) if need_attn == 2 else False for l in range(50)] # DETOUR    FA
@@ -336,12 +338,12 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
     info["efficiency"].reset()
     if ret != None:
         info["efficiency"].retrieval = ret
-    if enc == True:
-        if ret and enc:
-            white = torch.load(f"./temp/white_ret_pix.pt", weights_only=True)
-        else:
-            white = torch.load(f"./temp/white_qa_pix.pt", weights_only=True)
-        info["temp"]["white"] = white
+    # if enc == True:
+    #     if ret and enc:
+    #         white = torch.load(f"./temp/white_ret_pix.pt", weights_only=True)
+    #     else:
+    #         white = torch.load(f"./temp/white_qa_pix.pt", weights_only=True)
+    #     info["temp"]["white"] = white
 
 
 
@@ -349,9 +351,9 @@ def grouping(x, group_num):
     D = x.shape[-1]
     return x.reshape(-1, group_num, D) if len(x.shape) == 2 else x.reshape(x.shape[0], -1, group_num, D)
 
-def pruning(x, mask, prop=False):
+def pruning(x, mask, prop=False, group_num=1):
     D = x.shape[-1] # T, D
-
+    x = grouping(x, group_num)
     remain = x.masked_select(mask.reshape(-1, 1, 1)).view(-1, D)
     if prop:
         remain = torch.cat([remain, x.masked_select(~mask.reshape(-1, 1, 1)).view(-1, D).mean(dim=0, keepdim=True)], dim=0)
@@ -529,3 +531,36 @@ class DiffDropScheduler:
 
 
         return flops
+
+
+def BTP(pixel_values, grayscale, tau_e, tau_bg, group_num = 1):
+    p_h, p_w = 14, 14
+    B, C, H, W = pixel_values.shape
+    merge_size = int(math.sqrt(group_num))
+    h, w = (H // merge_size) // p_h, (W // merge_size) // p_w
+
+
+    # 1. Convert RGB to grayscale
+    if grayscale == 0:  # (1, 3, 448, 448)
+        gray_pixel = pixel_values.mean(dim=1)
+    elif grayscale == 1:
+        gray_pixel = (pixel_values * torch.tensor([0.299, 0.587, 0.114], device=pixel_values.device).view(1, 3, 1, 1)).sum(dim=1)
+    else:
+        raise ValueError
+
+    patch_values = gray_pixel.reshape(-1, h, merge_size, p_h, w, merge_size, p_w).permute(0, 1, 4, 2, 5, 3, 6).reshape(-1, p_h * p_w)
+
+    # 2. Get the background mode pixel
+    values, counts = torch.unique(patch_values, return_counts=True)
+    mode_pixel = values[counts.argmax()].item()
+
+    # 3. Create Background Mask
+    T_P = patch_values.shape[-1]
+    bg_pixel = ((patch_values - mode_pixel).abs() <= tau_e)  # (1024(T), 196(P))
+    bg_ratio = bg_pixel.sum(dim=-1) / T_P  # (1024(T))
+    content_mask = bg_ratio < tau_bg
+
+    # 4. MergeSize based mask_block
+    content_mask = content_mask.reshape(-1, group_num).sum(dim=-1) != 0
+
+    return content_mask.reshape(1, -1)
