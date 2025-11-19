@@ -292,7 +292,10 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
     if info["retrieval"]["use"]:
         info["retrieval"]["importance"] = []
 
-
+    info["compression"]["size"] = None
+    info["compression"]["source"] = None
+    info["compression"]["difficulty"] = None
+    # info["compression"]["mask_block"] = True
     info["compression"]["img_idx"] = [None, None, None]
 
     if info_comp is not None:
@@ -329,11 +332,6 @@ def resetInfo(info, info_comp = None, info_ret = None, ret=None, enc=None, need_
         info["compression"]["mass"]         = 0
         info["compression"]["propAttn"]     = 0
 
-    if info["compression"]["use"]:
-        info["compression"]["size"] = None
-        info["compression"]["source"] = None
-        info["compression"]["difficulty"] = None
-        # info["compression"]["mask_block"] = True
 
     info["efficiency"].reset()
     if ret != None:
