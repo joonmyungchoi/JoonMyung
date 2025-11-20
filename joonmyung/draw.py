@@ -48,7 +48,7 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                    col = 1, save_name=None, save = 1, border = False, # COMMON
                    fmt=0, fontsize=None, cbar=False,  # DRAW HEATMAP
                    show= True, deactivate=False,
-                   integ = False, # overlay
+                   integ = False, alpha=0.7, thr=0.1, # overlay
                    **kwargs):
     if deactivate:
         return
@@ -60,7 +60,7 @@ def drawController(data, vis_heatmap = False, vis_overlay = False, img = None, K
                     save_name=save_name if save else None, show=show, **kwargs)
     else:
         if img is not None and vis_overlay: # 이미지 겹치기
-            data = mask_to_image(img, mask) if mask is not None else overlay(img, data, integ=integ, colormap=colormap)
+            data = mask_to_image(img, mask) if mask is not None else overlay(img, data, integ=integ, colormap=colormap, alpha=alpha, thr=thr)
 
         drawImgPlot(data, col=col, border=border,
                     save_name=save_name if save else None, show=show, **kwargs)
@@ -389,19 +389,44 @@ def drawImgPlot(datas, col=1, title:str=None, columns=None,
     if show:
         plt.show()
 
-def overlay_mask(img: Image.Image, mask: Image.Image, colormap: str = "jet", alpha: float = 0.7) -> Image.Image:
+import numpy as np
+from PIL import Image
+import matplotlib as mpl
+
+
+def overlay_mask(img: Image.Image, mask: Image.Image,
+                 colormap: str = "jet", alpha: float = 0.7) -> Image.Image:
+
+    img_np = np.asarray(img).astype(np.float32)
+
+    # --- 1) mask normalize (0~1) ---
+    mask_rs = mask.resize(img.size, resample=Image.BICUBIC)
+    mask_np = np.asarray(mask_rs).astype(np.float32)
+    mask_np = np.clip(mask_np, 0, 1)
+
+    # --- 2) colormap 적용 (검정색 방지를 위해 low offset 추가) ---
+    # jet은 low value가 너무 검정이라 offset로 검정 회피
+    safe_mask = mask_np * 0.85 + 0.15
     cmap = mpl.cm.get_cmap(colormap)
-    # Resize mask and apply colormap
-    overlay = mask.resize(img.size, resample=Image.BICUBIC)
-    overlay = (255 * cmap(np.asarray(overlay) ** 2)[:, :, :3]).astype(np.uint8)
-    # Overlay the image with the mask
-    overlayed_img = Image.fromarray((alpha * np.asarray(img) + (1 - alpha) * overlay).astype(np.uint8))
+    overlay_np = (255 * cmap(safe_mask)[..., :3]).astype(np.float32)
 
-    return overlayed_img
+    # --- 3) soft mask scaling (주변 밝기 유지) ---
+    # 낮은 값이 원본을 암흑화하지 않도록 bias 조절
+    soft_m = np.clip(mask_np * 1.3 - 0.2, 0, 1)[..., None]
+
+    # --- 4) blend (original + colored overlay) ---
+    out = img_np * (1 - soft_m) + overlay_np * soft_m * alpha + img_np * soft_m * (1 - alpha)
+    out = np.clip(out, 0, 255).astype(np.uint8)
+
+    return Image.fromarray(out)
 
 
+# img = Image.open("img.jpg")
+# mask = Image.open("mask.jpg").convert("F")
+# overlay_mask(img, mask, "jet", 0.7)
+# print(1)
 
-def overlay(imgs, attnsL, integ=False, dataset=None, colormap="jet"):
+def overlay(imgs, attnsL, integ=False, dataset=None, colormap="jet", alpha=0.7, thr=0.0):
     if type(imgs) == Image.Image:
         toTensor = transforms.ToTensor()
         imgs = toTensor(imgs)[None].to(device=attnsL.device)
@@ -417,12 +442,13 @@ def overlay(imgs, attnsL, integ=False, dataset=None, colormap="jet"):
     if len(attnsL.shape) == 2: attnsL = attnsL.unsqueeze(0)
     if len(attnsL.shape) == 3: attnsL = attnsL.unsqueeze(0)
     attnsL = attnsL.reshape(-1, B, *attnsL.shape[-2:]) # L, B, H, W
+    mask_thrLs = (attnsL > thr).to(attnsL.dtype)
     if integ: attnsL = normalization(attnsL, type=0)
     results = []
-    for attns in attnsL:
-        for img, attn in zip(imgs, attns):
+    for attns, mask_thrs in zip(attnsL, mask_thrLs):
+        for img, attn, mask_thr in zip(imgs, attns, mask_thrs):
             if not integ: attn = normalization(attn, type=0)
-            result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F'), colormap=colormap) # (3, 224, 224), (1, 14, 14)
+            result = overlay_mask(to_pil_image(img), to_pil_image(attn, mode='F'), colormap=colormap, alpha=alpha) # (3, 224, 224), (1, 14, 14)
             results.append(result)
     return results # (L * B) * overlay
 
