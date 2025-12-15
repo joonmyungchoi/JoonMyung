@@ -3,6 +3,7 @@ from collections import defaultdict, deque
 from joonmyung.draw import data2PIL
 from joonmyung.utils import to_np
 import torch.distributed as dist
+from pathlib import Path
 import datetime
 import pickle
 import wandb
@@ -271,7 +272,7 @@ class MetricLogger(object):
 
 
 
-from pathlib import Path
+
 def list2name(value):
     return str(value).replace(" ", "").replace("],[", "_").replace("[", "").replace(",", "").replace("]", "")
 def list2str(value):
