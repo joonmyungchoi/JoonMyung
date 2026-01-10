@@ -84,7 +84,7 @@ def generate_mask(data, topK=10, use_threshold = False, F = 1):
     mask = mask.view(shape)
     return mask, data.view(shape) * mask
 
-def mask_to_image(image, mask, opacity=0.3, bg_color = (0.0, 0.0, 0.0)):
+def mask_to_image(image, mask, opacity=1.0, bg_color = (0.0, 0.0, 0.0)):
     if type(image) == Image.Image:
         to_tensor = transforms.ToTensor()
         image = to_tensor(image)[None].to(device=mask.device)
